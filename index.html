@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="pl">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Jarvis</title>
+  <meta name="description" content="Jarvis — osobisty asystent głosowy (prototyp, etap 1).">
+  <meta name="theme-color" content="#050b14">
+  <meta name="color-scheme" content="dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon-192.png" type="image/png">
+  <link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <div class="grid-bg" aria-hidden="true"></div>
+
+  <header class="topbar">
+    <div class="brand">
+      <span class="brand-mark" aria-hidden="true"></span>
+      <div>
+        <h1>J.A.R.V.I.S.</h1>
+        <p class="sub">Prototyp · etap 1</p>
+      </div>
+    </div>
+    <button id="installBtn" class="chip chip-action" hidden>Zainstaluj</button>
+  </header>
+
+  <section class="status-row" aria-label="Stan systemów">
+    <span class="chip" id="chipMic" data-state="unknown">Mikrofon: sprawdzam…</span>
+    <span class="chip" id="chipVoice" data-state="unknown">Głos: sprawdzam…</span>
+    <span class="chip" id="chipAi" data-state="off" title="Połączenie z modelem AI pojawi się w kolejnym etapie">AI: niepołączone</span>
+    <span class="chip" id="chipNet" data-state="unknown">Sieć: …</span>
+  </section>
+
+  <main>
+    <section class="core-wrap">
+      <button id="coreBtn" class="core" data-state="idle" aria-label="Naciśnij i mów">
+        <span class="ring ring-1" aria-hidden="true"></span>
+        <span class="ring ring-2" aria-hidden="true"></span>
+        <span class="ring ring-3" aria-hidden="true"></span>
+        <span class="core-center" aria-hidden="true">
+          <svg viewBox="0 0 24 24" width="40" height="40"><path fill="currentColor" d="M12 15a3 3 0 0 0 3-3V6a3 3 0 0 0-6 0v6a3 3 0 0 0 3 3Zm5-3a1 1 0 1 1 2 0 7 7 0 0 1-6 6.93V21h3a1 1 0 1 1 0 2H8a1 1 0 1 1 0-2h3v-2.07A7 7 0 0 1 5 12a1 1 0 1 1 2 0 5 5 0 0 0 10 0Z"/></svg>
+        </span>
+      </button>
+      <p id="stateLabel" class="state-label" aria-live="polite">Gotowy. Naciśnij i mów.</p>
+      <p id="interim" class="interim" aria-live="polite"></p>
+    </section>
+
+    <div id="alert" class="alert" role="alert" hidden>
+      <div class="alert-body">
+        <strong id="alertTitle"></strong>
+        <p id="alertText"></p>
+      </div>
+      <div class="alert-actions">
+        <button id="alertRetry" class="btn-small" hidden>Spróbuj ponownie</button>
+        <button id="alertClose" class="btn-small btn-ghost" aria-label="Zamknij komunikat">✕</button>
+      </div>
+    </div>
+
+    <section class="log-panel" aria-label="Rozmowa">
+      <div class="panel-head">
+        <span>Rozmowa (tylko ta sesja)</span>
+        <button id="clearBtn" class="btn-link">Wyczyść</button>
+      </div>
+      <ol id="log" class="log"></ol>
+    </section>
+
+    <form id="textForm" class="text-form" autocomplete="off">
+      <input id="textInput" type="text" placeholder="Albo napisz polecenie…" aria-label="Polecenie tekstowe" enterkeyhint="send">
+      <button type="submit" class="btn-send" aria-label="Wyślij">➤</button>
+    </form>
+
+    <section class="wake-panel">
+      <label class="switch">
+        <input type="checkbox" id="wakeToggle">
+        <span class="slider" aria-hidden="true"></span>
+        <span class="switch-label">Czuwanie na hasło „Jarvis” <em>(eksperymentalne)</em></span>
+      </label>
+      <p class="hint">Działa tylko, gdy aplikacja jest otwarta na ekranie. Po zablokowaniu telefonu lub przejściu do innej aplikacji czuwanie się zatrzymuje — przeglądarka nie pozwala PWA słuchać w tle.</p>
+    </section>
+  </main>
+
+  <footer class="foot">
+    <span id="version"></span>
+  </footer>
+
+  <script src="app.js" defer></script>
+</body>
+</html>
