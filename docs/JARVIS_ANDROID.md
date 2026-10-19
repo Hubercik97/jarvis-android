@@ -1,6 +1,6 @@
 # Jarvis — aplikacja Android (APK)
 
-Natywna aplikacja Android (Kotlin) + backend w chmurze (Cloudflare Worker). Wszystko budowane w GitHub Actions — bez komputera.
+Natywna aplikacja Android (Kotlin + Jetpack Compose) + backend w chmurze (Cloudflare Worker). Wszystko budowane w GitHub Actions — bez komputera.
 
 ## Co jest w środku
 
@@ -11,7 +11,7 @@ Natywna aplikacja Android (Kotlin) + backend w chmurze (Cloudflare Worker). Wszy
 | `.github/workflows/android-apk.yml` | Testy + budowanie APK + wydanie z linkiem do pobrania |
 | `.github/workflows/backend-deploy.yml` | Ręczne wdrożenie backendu na Cloudflare |
 
-Istniejąca wersja PWA (jeśli jest w repozytorium) zostaje nietknięta — aplikacja Android jest w osobnym folderze.
+Wersja PWA z etapu 1 (pliki w katalogu głównym: `index.html`, `app.js`, …) zostaje nietknięta — aplikacja Android jest w osobnym folderze.
 
 ## Dlaczego natywnie, a nie PWA w WebView
 
@@ -20,14 +20,26 @@ W WebView na Androidzie nie działa Web Speech API (rozpoznawanie mowy). Natywna
 
 ## Funkcje (stan faktyczny)
 
-Zaimplementowane w kodzie:
-- przycisk mikrofonu → rozpoznanie polskiej mowy → odpowiedź AI → odczyt głosem po polsku,
-- wpisywanie poleceń tekstem,
-- obsługa: brak zgody na mikrofon (w tym trwała odmowa → przejście do ustawień), brak internetu, brak usługi rozpoznawania mowy, brak polskiego głosu TTS, błędy serwera, timeout,
-- ekran **Status**: internet, mikrofon, rozpoznawanie mowy, głos polski, adres backendu, test połączenia z AI,
-- rejestr modułów (`features/`) — pamięć, kamera, okulary, sterowanie komputerem, słowo wybudzające oznaczone jako **planowane**.
+Ekran główny (wzorowany na projekcie wizualnym): nagłówek JARVIS z ustawieniami, data i godzina,
+karta pogody, animowany rdzeń AI (metaliczna kula, obracające się pierścienie, pomarańczowe akcenty,
+świetlna platforma), powitanie zależne od pory dnia, przyciski Głos / Kamera / Pliki / Internet,
+dolny pasek z dużym mikrofonem.
 
-Czego NIE ma: nasłuchiwania w tle / przy wygaszonym ekranie, słowa „Jarvis”, pamięci między sesjami.
+| Funkcja | Stan |
+|---|---|
+| Mikrofon → polska mowa → AI → odpowiedź głosem | ✅ (wymaga skonfigurowanego backendu) |
+| Pisanie poleceń tekstem | ✅ |
+| Kamera → zdjęcie → opis przez AI | ✅ (aparat systemowy, zdjęcie usuwane po wysłaniu) |
+| Pliki (tekst, JSON, obrazy) → analiza AI | ✅ |
+| Internet → wyszukiwanie w przeglądarce | ✅ (otwiera wyszukiwarkę; AI samo nie przegląda sieci) |
+| Pogoda | ✅ prawdziwe dane Open-Meteo (miasto z Ustawień albo przybliżona lokalizacja); bez danych → „Brak danych” |
+| Kalendarz | ✅ odczyt wydarzeń z kalendarza telefonu |
+| Przypomnienia | ✅ powiadomienia (mogą przyjść z kilkuminutowym opóźnieniem) |
+| Notatki, Zadania | ✅ zapisywane lokalnie, z dyktowaniem |
+| Inteligentny dom | ❌ niepodłączone — ekran mówi to wprost, bez fałszywych przełączników |
+| Komputer / panel Windows | ❌ planowane — architektura: `sync/SyncRepository` + backend |
+| Pamięć między sesjami, okulary, słowo „Jarvis” w tle | ❌ planowane |
+
 Aplikacja nie zapisuje nagrań głosu.
 
 ## Konfiguracja (z telefonu)

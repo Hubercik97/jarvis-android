@@ -67,6 +67,18 @@ jobs:
         working-directory: android
         run: gradle --no-daemon testDebugUnitTest
 
+      - name: Podsumowanie testów
+        if: always()
+        run: |
+          python3 - <<'EOF'
+          import glob, xml.etree.ElementTree as ET
+          t = f = e = s = 0
+          for p in glob.glob("android/app/build/test-results/testDebugUnitTest/*.xml"):
+              r = ET.parse(p).getroot()
+              t += int(r.get("tests", 0)); f += int(r.get("failures", 0)); e += int(r.get("errors", 0)); s += int(r.get("skipped", 0))
+          print(f"::notice title=Testy Androida::{t} testów, {f} nieudanych, {e} błędów, {s} pominiętych")
+          EOF
+
       - name: Budowanie APK
         working-directory: android
         run: gradle --no-daemon assembleDebug
