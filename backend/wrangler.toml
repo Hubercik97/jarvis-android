@@ -1,0 +1,11 @@
+name = "jarvis-backend"
+main = "worker.js"
+compatibility_date = "2026-10-01"
+
+# Sekrety ustawiasz w panelu Cloudflare (Workers → jarvis-backend → Settings → Variables and Secrets)
+# albo przez workflow "Backend — wdrożenie" z sekretów GitHub:
+#   ANTHROPIC_API_KEY  — klucz API modelu
+#   APP_TOKEN          — token aplikacji (ten sam wpisujesz w aplikacji na ekranie Status)
+# Opcjonalnie:
+# [vars]
+# MODEL = "claude-haiku-5-5"

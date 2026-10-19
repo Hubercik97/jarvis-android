@@ -1,0 +1,122 @@
+name: Jarvis — budowanie APK
+
+on:
+  push:
+    paths:
+      - "android/**"
+      - "backend/**"
+      - ".github/workflows/android-apk.yml"
+  pull_request:
+    paths:
+      - "android/**"
+      - "backend/**"
+      - ".github/workflows/android-apk.yml"
+  workflow_dispatch:
+    inputs:
+      publish_release:
+        description: "Opublikuj APK jako wydanie testowe (link do pobrania na telefon)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: apk-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-tests:
+    name: Testy backendu
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Testy jednostkowe (node --test)
+        working-directory: backend
+        run: node --test
+
+  android:
+    name: Testy i APK
+    runs-on: ubuntu-latest
+    env:
+      # Zmienna repozytorium (nie sekret): Settings → Secrets and variables → Actions → Variables
+      JARVIS_BACKEND_URL: ${{ vars.JARVIS_BACKEND_URL }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: "8.9"
+
+      # Stały klucz debug między buildami, żeby nowe APK instalowało się jako aktualizacja.
+      - name: Przywróć klucz podpisu debug
+        uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: jarvis-debug-keystore-v1
+
+      - name: Testy jednostkowe
+        working-directory: android
+        run: gradle --no-daemon testDebugUnitTest
+
+      - name: Budowanie APK
+        working-directory: android
+        run: gradle --no-daemon assembleDebug
+
+      - name: Nazwa pliku APK
+        id: apk
+        run: |
+          NAME="jarvis-${GITHUB_RUN_NUMBER}.apk"
+          cp android/app/build/outputs/apk/debug/app-debug.apk "$NAME"
+          echo "name=$NAME" >> "$GITHUB_OUTPUT"
+          echo "### ✅ APK gotowe: $NAME" >> "$GITHUB_STEP_SUMMARY"
+          echo "Pobierz z sekcji **Artifacts** poniżej (plik ZIP z APK w środku)." >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Zapisz APK jako artefakt
+        uses: actions/upload-artifact@v4
+        with:
+          name: jarvis-apk-${{ github.run_number }}
+          path: ${{ steps.apk.outputs.name }}
+          retention-days: 30
+
+      - name: Zapisz raporty testów
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: raporty-testow-${{ github.run_number }}
+          path: android/app/build/reports/tests/
+          if-no-files-found: ignore
+
+  release:
+    name: Wydanie testowe (bezpośredni link do APK)
+    needs: [backend-tests, android]
+    if: >-
+      github.event_name == 'workflow_dispatch' && inputs.publish_release
+      || github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: jarvis-apk-${{ github.run_number }}
+      - name: Utwórz wydanie z APK
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          TAG="build-${GITHUB_RUN_NUMBER}"
+          gh release create "$TAG" jarvis-*.apk \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "Jarvis — build ${GITHUB_RUN_NUMBER} (testowy)" \
+            --notes "Automatyczny build testowy z ${GITHUB_REF_NAME} (${GITHUB_SHA::7}). Testy przeszły. Pobierz plik .apk poniżej na telefonie."
+          echo "### 📱 Link do APK: https://github.com/${GITHUB_REPOSITORY}/releases/tag/${TAG}" >> "$GITHUB_STEP_SUMMARY"

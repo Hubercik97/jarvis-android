@@ -1,0 +1,8 @@
+{
+  "name": "jarvis-backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test"
+  }
+}

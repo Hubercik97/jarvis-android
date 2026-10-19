@@ -1,0 +1,57 @@
+name: Jarvis — wdrożenie backendu (Cloudflare)
+
+# Uruchamiane tylko ręcznie: Actions → "Jarvis — wdrożenie backendu" → Run workflow.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Testy przed wdrożeniem
+        working-directory: backend
+        run: node --test
+
+      - name: Sprawdź sekrety
+        env:
+          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CF_TOKEN" ] || [ -z "$CF_ACCOUNT" ]; then
+            echo "::error::Brak sekretów CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID — dodaj je w Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - name: Wdróż Worker
+        working-directory: backend
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: npx --yes wrangler@3 deploy
+
+      - name: Ustaw sekrety Workera
+        working-directory: backend
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          APP_TOKEN: ${{ secrets.JARVIS_APP_TOKEN }}
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            printf '%s' "$ANTHROPIC_API_KEY" | npx --yes wrangler@3 secret put ANTHROPIC_API_KEY
+          else
+            echo "::warning::Brak sekretu ANTHROPIC_API_KEY — backend będzie zgłaszał brak klucza."
+          fi
+          if [ -n "$APP_TOKEN" ]; then
+            printf '%s' "$APP_TOKEN" | npx --yes wrangler@3 secret put APP_TOKEN
+          else
+            echo "::warning::Brak sekretu JARVIS_APP_TOKEN — backend jest dostępny bez tokenu."
+          fi
