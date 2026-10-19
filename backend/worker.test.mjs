@@ -1,6 +1,6 @@
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import worker, { normalizeMessages, extractText, DEFAULT_MODEL } from "./worker.js";
+import worker, { normalizeMessages, extractText, toModelMessages, DEFAULT_MODEL } from "./worker.js";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -99,7 +99,7 @@ test("normalizeMessages merges roles, trims and enforces user start/end", () => 
   ]);
   assert.equal(normalizeMessages("x"), null);
   assert.equal(normalizeMessages([{ role: "assistant", content: "x" }]), null);
-  assert.equal(normalizeMessages([{ role: "user", content: "x".repeat(9000) }])[0].content.length, 4000);
+  assert.equal(normalizeMessages([{ role: "user", content: "x".repeat(20000) }])[0].content.length, 12000);
 });
 
 test("extractText joins text blocks only", () => {
@@ -110,4 +110,28 @@ test("extractText joins text blocks only", () => {
 test("unknown path returns 404", async () => {
   const res = await worker.fetch(new Request("https://jarvis.test/nope"), env);
   assert.equal(res.status, 404);
+});
+
+test("image from user is forwarded as image block", async () => {
+  let sent;
+  globalThis.fetch = async (url, init) => {
+    sent = JSON.parse(init.body);
+    return new Response(JSON.stringify({ content: [{ type: "text", text: "Widzę kubek." }] }), { status: 200 });
+  };
+  const req = chatRequest([{ role: "user", content: "Co to jest?", image: { media_type: "image/jpeg", data: "QUJD" } }]);
+  const res = await worker.fetch(req, env);
+  assert.equal((await res.json()).reply, "Widzę kubek.");
+  assert.equal(sent.messages[0].content[0].type, "image");
+  assert.equal(sent.messages[0].content[0].source.data, "QUJD");
+  assert.equal(sent.messages[0].content[1].text, "Co to jest?");
+});
+
+test("invalid or non-user images are dropped", () => {
+  const out = normalizeMessages([
+    { role: "user", content: "a", image: { media_type: "text/html", data: "QUJD" } },
+    { role: "assistant", content: "b", image: { media_type: "image/jpeg", data: "QUJD" } },
+    { role: "user", content: "c", image: { media_type: "image/jpeg", data: "<script>" } },
+  ]);
+  assert.ok(out.every((m) => !m.image));
+  assert.deepEqual(toModelMessages([{ role: "user", content: "x" }]), [{ role: "user", content: "x" }]);
 });

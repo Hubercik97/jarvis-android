@@ -32,7 +32,14 @@ object ChatProtocol {
             messages.removeAt(0)
         }
         val array = JSONArray()
-        messages.forEach { array.put(JSONObject().put("role", it.kind.wire).put("content", it.text.trim())) }
+        messages.forEachIndexed { index, m ->
+            val item = JSONObject().put("role", m.kind.wire).put("content", m.text.trim())
+            // Zdjęcie wysyłamy tylko z ostatnią wiadomością — starsze nie są potrzebne i obciążałyby łącze.
+            if (index == messages.lastIndex && m.kind == Kind.USER && !m.imageBase64.isNullOrBlank()) {
+                item.put("image", JSONObject().put("media_type", "image/jpeg").put("data", m.imageBase64))
+            }
+            array.put(item)
+        }
         return JSONObject()
             .put("messages", array)
             .put("client", JSONObject().put("app", "jarvis-android").put("version", appVersion))

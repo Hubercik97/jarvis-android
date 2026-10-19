@@ -9,13 +9,15 @@
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 export const DEFAULT_MODEL = "claude-haiku-5-5";
 export const MAX_MESSAGES = 20;
-export const MAX_CHARS = 4000;
+export const MAX_CHARS = 12000;
+export const MAX_IMAGE_B64 = 2_000_000;
+const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export const SYSTEM_PROMPT = [
   "Jesteś Jarvis — osobisty asystent AI Huberta.",
   "Zawsze odpowiadasz po polsku, naturalnie i zwięźle (zwykle 1–4 zdania), bo odpowiedzi są czytane na głos.",
   "Nie używaj Markdown, list wypunktowanych, tabel ani emoji.",
-  "Nie masz jeszcze dostępu do kamery, pamięci między rozmowami, internetu w czasie rzeczywistym ani komputera użytkownika — nie udawaj, że je masz.",
+  "Gdy użytkownik dołączy zdjęcie z kamery, opisz je i odpowiedz na pytanie. Nie masz pamięci między rozmowami, internetu w czasie rzeczywistym ani dostępu do komputera użytkownika — nie udawaj, że je masz.",
   "Jeśli czegoś nie wiesz, powiedz to wprost.",
 ].join(" ");
 
@@ -48,16 +50,41 @@ export function normalizeMessages(input) {
     if (typeof m.content !== "string") continue;
     const content = m.content.trim().slice(0, MAX_CHARS);
     if (!content) continue;
+    const image = validImage(m);
     const last = cleaned[cleaned.length - 1];
     if (last && last.role === m.role) {
       last.content = `${last.content}\n${content}`;
+      if (image) last.image = image;
     } else {
-      cleaned.push({ role: m.role, content });
+      cleaned.push(image ? { role: m.role, content, image } : { role: m.role, content });
     }
   }
   while (cleaned.length && cleaned[0].role !== "user") cleaned.shift();
   while (cleaned.length && cleaned[cleaned.length - 1].role !== "user") cleaned.pop();
   return cleaned.length ? cleaned : null;
+}
+
+function validImage(m) {
+  if (m.role !== "user" || !m.image || typeof m.image !== "object") return null;
+  const { media_type, data } = m.image;
+  if (!IMAGE_TYPES.has(media_type) || typeof data !== "string" || !data || data.length > MAX_IMAGE_B64) return null;
+  if (!/^[A-Za-z0-9+/=]+$/.test(data)) return null;
+  return { media_type, data };
+}
+
+/** Zamienia znormalizowane wiadomości na format API modelu (zdjęcie jako blok image). */
+export function toModelMessages(messages) {
+  return messages.map((m) =>
+    m.image
+      ? {
+          role: m.role,
+          content: [
+            { type: "image", source: { type: "base64", media_type: m.image.media_type, data: m.image.data } },
+            { type: "text", text: m.content },
+          ],
+        }
+      : { role: m.role, content: m.content },
+  );
 }
 
 export function extractText(data) {
@@ -96,7 +123,7 @@ async function handleChat(request, env) {
         model: env.MODEL || DEFAULT_MODEL,
         max_tokens: 600,
         system: SYSTEM_PROMPT,
-        messages,
+        messages: toModelMessages(messages),
       }),
     });
   } catch {

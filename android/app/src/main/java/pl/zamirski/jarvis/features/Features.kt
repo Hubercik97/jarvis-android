@@ -16,10 +16,16 @@ object FeatureRegistry {
     val all: List<Feature> = listOf(
         Feature("chat", "Rozmowa po polsku (mikrofon + tekst)", FeatureState.ACTIVE),
         Feature("voice_reply", "Odpowiedzi głosowe po polsku", FeatureState.ACTIVE),
+        Feature("camera", "Kamera → opis zdjęcia przez AI", FeatureState.ACTIVE),
+        Feature("files", "Pliki tekstowe i obrazy → analiza AI", FeatureState.ACTIVE),
+        Feature("web", "Wyszukiwanie w przeglądarce", FeatureState.ACTIVE),
+        Feature("weather", "Pogoda (Open-Meteo)", FeatureState.ACTIVE),
+        Feature("calendar", "Kalendarz telefonu (odczyt)", FeatureState.ACTIVE),
+        Feature("notes_tasks", "Notatki, zadania, przypomnienia (lokalnie)", FeatureState.ACTIVE),
         Feature("memory", "Pamięć rozmów między sesjami", FeatureState.PLANNED),
-        Feature("camera", "Kamera telefonu", FeatureState.PLANNED),
+        Feature("smart_home", "Inteligentny dom", FeatureState.PLANNED),
+        Feature("computer", "Panel Windows i sterowanie komputerem", FeatureState.PLANNED),
         Feature("glasses", "Okulary", FeatureState.PLANNED),
-        Feature("computer", "Sterowanie komputerem", FeatureState.PLANNED),
         Feature("wake_word", "Wywołanie słowem „Jarvis” / nasłuch w tle", FeatureState.PLANNED),
     )
 }

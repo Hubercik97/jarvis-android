@@ -1,364 +1,289 @@
 package pl.zamirski.jarvis.ui
 
 import android.Manifest
-import android.animation.ObjectAnimator
-import android.animation.PropertyValuesHolder
-import android.animation.ValueAnimator
+import android.app.SearchManager
+import android.content.ActivityNotFoundException
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.Settings
-import android.view.View
-import android.view.inputmethod.EditorInfo
-import android.view.inputmethod.InputMethodManager
-import android.widget.EditText
-import android.widget.ImageButton
-import android.widget.TextView
+import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.appcompat.app.AppCompatActivity
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
-import androidx.lifecycle.lifecycleScope
-import androidx.recyclerview.widget.LinearLayoutManager
-import androidx.recyclerview.widget.RecyclerView
-import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import androidx.core.content.FileProvider
+import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavHostController
+import androidx.navigation.compose.NavHost
+import androidx.navigation.compose.composable
+import androidx.navigation.compose.rememberNavController
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import pl.zamirski.jarvis.R
-import pl.zamirski.jarvis.core.AiClient
-import pl.zamirski.jarvis.core.AiResult
-import pl.zamirski.jarvis.core.ChatMessage
-import pl.zamirski.jarvis.core.HealthResult
-import pl.zamirski.jarvis.core.Kind
-import pl.zamirski.jarvis.core.Messages
-import pl.zamirski.jarvis.net.BackendAiClient
-import pl.zamirski.jarvis.net.NetworkMonitor
-import pl.zamirski.jarvis.settings.AppSettings
-import pl.zamirski.jarvis.voice.SpeechInput
-import pl.zamirski.jarvis.voice.VoiceOutput
+import kotlinx.coroutines.withContext
+import pl.zamirski.jarvis.data.ReminderScheduler
+import pl.zamirski.jarvis.ui.components.CardShape
+import pl.zamirski.jarvis.ui.screens.CalendarScreen
+import pl.zamirski.jarvis.ui.screens.ChatScreen
+import pl.zamirski.jarvis.ui.screens.ComputerScreen
+import pl.zamirski.jarvis.ui.screens.FeaturesScreen
+import pl.zamirski.jarvis.ui.screens.HomeScreen
+import pl.zamirski.jarvis.ui.screens.NotesScreen
+import pl.zamirski.jarvis.ui.screens.RemindersScreen
+import pl.zamirski.jarvis.ui.screens.SettingsScreen
+import pl.zamirski.jarvis.ui.screens.SmartHomeScreen
+import pl.zamirski.jarvis.ui.screens.TasksScreen
+import pl.zamirski.jarvis.ui.screens.WeatherScreen
+import pl.zamirski.jarvis.ui.theme.JColors
+import pl.zamirski.jarvis.ui.theme.JarvisTheme
+import java.io.File
 
-class MainActivity : AppCompatActivity(), SpeechInput.Listener, VoiceOutput.Listener {
+object Routes {
+    const val HOME = "home"
+    const val CHAT = "chat"
+    const val FEATURES = "features"
+    const val WEATHER = "weather"
+    const val CALENDAR = "calendar"
+    const val REMINDERS = "reminders"
+    const val NOTES = "notes"
+    const val TASKS = "tasks"
+    const val SMART_HOME = "smarthome"
+    const val COMPUTER = "computer"
+    const val SETTINGS = "settings"
+}
 
-    private enum class UiState { IDLE, LISTENING, THINKING, SPEAKING }
+/** Akcje wymagające systemu (uprawnienia, aparat, pliki, przeglądarka). */
+class AppActions(
+    val startVoice: () -> Unit,
+    val takePhoto: () -> Unit,
+    val pickFile: () -> Unit,
+    val webSearch: (String) -> Unit,
+    val requestPermission: (String, (Boolean) -> Unit) -> Unit,
+    val openAppSettings: () -> Unit,
+)
 
-    private lateinit var settings: AppSettings
-    private lateinit var ai: AiClient
-    private lateinit var speech: SpeechInput
-    private lateinit var voice: VoiceOutput
-
-    private lateinit var micButton: ImageButton
-    private lateinit var micRing: View
-    private lateinit var stateText: TextView
-    private lateinit var connectionDot: View
-    private lateinit var connectionText: TextView
-    private lateinit var input: EditText
-    private lateinit var list: RecyclerView
-
-    private val history = mutableListOf<ChatMessage>()
-    private lateinit var adapter: ChatAdapter
-    private var state = UiState.IDLE
-    private var ringAnimator: ObjectAnimator? = null
-
-    private val micPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
-        if (granted) startListening() else onMicDenied()
-    }
-
+class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(R.layout.activity_main)
+        ReminderScheduler.ensureChannel(this)
+        setContent {
+            JarvisTheme { AppRoot() }
+        }
+    }
+}
 
-        settings = AppSettings(this)
-        ai = BackendAiClient(applicationContext, settings)
-        speech = SpeechInput(this, this)
-        voice = VoiceOutput(this, this)
+@Composable
+private fun AppRoot() {
+    val vm: JarvisViewModel = viewModel()
+    val nav = rememberNavController()
+    val actions = rememberAppActions(vm, nav)
 
-        micButton = findViewById(R.id.mic_button)
-        micRing = findViewById(R.id.mic_ring)
-        stateText = findViewById(R.id.state_text)
-        connectionDot = findViewById(R.id.connection_dot)
-        connectionText = findViewById(R.id.connection_text)
-        input = findViewById(R.id.text_input)
-        list = findViewById(R.id.chat_list)
+    Box(Modifier.fillMaxSize()) {
+        NavHost(navController = nav, startDestination = Routes.HOME) {
+            composable(Routes.HOME) { HomeScreen(vm, actions) { nav.navigate(it) } }
+            composable(Routes.CHAT) { ChatScreen(vm, actions) { nav.popBackStack() } }
+            composable(Routes.FEATURES) { FeaturesScreen(onBack = { nav.popBackStack() }) { nav.navigate(it) } }
+            composable(Routes.WEATHER) { WeatherScreen(vm, actions) { nav.popBackStack() } }
+            composable(Routes.CALENDAR) { CalendarScreen(vm, actions) { nav.popBackStack() } }
+            composable(Routes.REMINDERS) { RemindersScreen(vm, actions) { nav.popBackStack() } }
+            composable(Routes.NOTES) { NotesScreen(vm, actions) { nav.popBackStack() } }
+            composable(Routes.TASKS) { TasksScreen(vm) { nav.popBackStack() } }
+            composable(Routes.SMART_HOME) { SmartHomeScreen { nav.popBackStack() } }
+            composable(Routes.COMPUTER) { ComputerScreen(vm) { nav.popBackStack() } }
+            composable(Routes.SETTINGS) { SettingsScreen(vm, actions) { nav.popBackStack() } }
+        }
 
-        adapter = ChatAdapter(history)
-        list.layoutManager = LinearLayoutManager(this).apply { stackFromEnd = true }
-        list.adapter = adapter
-
-        micButton.setOnClickListener { onMicPressed() }
-        findViewById<View>(R.id.send_button).setOnClickListener { submitTypedText() }
-        input.setOnEditorActionListener { _, actionId, _ ->
-            if (actionId == EditorInfo.IME_ACTION_SEND) {
-                submitTypedText()
-                true
-            } else {
-                false
+        val notice = vm.notice
+        if (notice != null) {
+            LaunchedEffect(notice) {
+                delay(6000)
+                if (vm.notice == notice) vm.notice = null
+            }
+            Box(
+                Modifier
+                    .statusBarsPadding()
+                    .padding(12.dp)
+                    .fillMaxWidth()
+                    .clip(CardShape)
+                    .background(JColors.CardSolid)
+                    .border(1.dp, JColors.Warning.copy(alpha = 0.6f), CardShape)
+                    .clickable { vm.notice = null }
+                    .padding(14.dp)
+                    .align(Alignment.TopCenter),
+            ) {
+                Text(notice, color = JColors.Text, fontSize = 14.sp)
             }
         }
-        findViewById<View>(R.id.status_button).setOnClickListener {
-            startActivity(Intent(this, StatusActivity::class.java))
-        }
-        findViewById<View>(R.id.connection_bar).setOnClickListener {
-            startActivity(Intent(this, StatusActivity::class.java))
-        }
-
-        addMessage(ChatMessage(Kind.NOTICE, getString(R.string.welcome)))
-        setState(UiState.IDLE)
     }
+}
 
-    override fun onResume() {
-        super.onResume()
-        refreshConnection()
-    }
+@Composable
+private fun rememberAppActions(vm: JarvisViewModel, nav: NavHostController): AppActions {
+    val context = LocalContext.current
+    val activity = context as ComponentActivity
+    val scope = rememberCoroutineScope()
 
-    override fun onStop() {
-        super.onStop()
-        if (state == UiState.LISTENING) {
-            speech.cancel()
-            setState(UiState.IDLE)
-        }
-        if (state == UiState.SPEAKING) {
-            voice.stop()
-            setState(UiState.IDLE)
-        }
-    }
+    var micBlockedDialog by remember { mutableStateOf(false) }
+    var pendingPhoto by rememberSaveable { mutableStateOf<Uri?>(null) }
+    var permissionCallback by remember { mutableStateOf<((Boolean) -> Unit)?>(null) }
 
-    override fun onDestroy() {
-        speech.destroy()
-        voice.shutdown()
-        super.onDestroy()
-    }
-
-    // ---------- Mikrofon ----------
-
-    private fun onMicPressed() {
-        when (state) {
-            UiState.LISTENING -> {
-                speech.stop()
-                return
-            }
-            UiState.SPEAKING -> voice.stop()
-            UiState.THINKING -> {
-                stateText.text = getString(R.string.state_wait)
-                return
-            }
-            UiState.IDLE -> Unit
-        }
-        if (!speech.isAvailable()) {
-            addMessage(ChatMessage(Kind.NOTICE, getString(R.string.err_no_recognizer)))
-            return
-        }
-        when {
-            hasMicPermission() -> startListening()
-            shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) ->
-                MaterialAlertDialogBuilder(this)
-                    .setTitle(R.string.mic_rationale_title)
-                    .setMessage(R.string.mic_rationale)
-                    .setPositiveButton(R.string.allow) { _, _ -> micPermission.launch(Manifest.permission.RECORD_AUDIO) }
-                    .setNegativeButton(R.string.cancel, null)
-                    .show()
-            else -> micPermission.launch(Manifest.permission.RECORD_AUDIO)
-        }
-    }
-
-    private fun hasMicPermission() =
-        ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
-
-    private fun onMicDenied() {
-        if (!shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO)) {
-            // Odmowa trwała („Nie pytaj ponownie”) — jedyna droga to ustawienia systemu.
-            MaterialAlertDialogBuilder(this)
-                .setTitle(R.string.mic_denied_title)
-                .setMessage(R.string.mic_denied_permanent)
-                .setPositiveButton(R.string.open_settings) { _, _ -> openAppSettings() }
-                .setNegativeButton(R.string.cancel, null)
-                .show()
-        } else {
-            addMessage(ChatMessage(Kind.NOTICE, getString(R.string.mic_denied)))
-        }
-    }
-
-    private fun openAppSettings() {
-        startActivity(
-            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", packageName, null))
+    val openSettings = {
+        context.startActivity(
+            Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.fromParts("package", context.packageName, null))
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
         )
     }
 
-    private fun startListening() {
-        if (!NetworkMonitor.isOnline(this)) {
-            addMessage(ChatMessage(Kind.NOTICE, Messages.forFailure(pl.zamirski.jarvis.core.FailureReason.OFFLINE)))
-            refreshConnection()
-            return
+    val micLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        when {
+            granted -> vm.startListening()
+            !activity.shouldShowRequestPermissionRationale(Manifest.permission.RECORD_AUDIO) -> micBlockedDialog = true
+            else -> vm.notice = "Bez zgody na mikrofon możesz pisać polecenia tekstem."
         }
-        voice.stop()
-        setState(UiState.LISTENING)
-        stateText.text = getString(R.string.state_preparing)
-        speech.start()
     }
 
-    override fun onListeningReady() {
-        if (state == UiState.LISTENING) stateText.text = getString(R.string.state_listening)
+    val permissionLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        permissionCallback?.invoke(granted)
+        permissionCallback = null
     }
 
-    override fun onPartialText(text: String) {
-        if (state == UiState.LISTENING) stateText.text = "„$text”"
-    }
-
-    override fun onFinalText(text: String) {
-        if (state != UiState.LISTENING) return
-        setState(UiState.IDLE)
-        if (text.isBlank()) {
-            stateText.text = Messages.forSpeechError(7)
-            return
-        }
-        sendToAi(text)
-    }
-
-    override fun onSpeechError(code: Int) {
-        if (state != UiState.LISTENING) return
-        setState(UiState.IDLE)
-        if (Messages.isSilence(code)) {
-            stateText.text = Messages.forSpeechError(code)
+    val cameraLauncher = rememberLauncherForActivityResult(ActivityResultContracts.TakePicture()) { ok ->
+        val uri = pendingPhoto
+        pendingPhoto = null
+        if (ok && uri != null) {
+            scope.launch {
+                val b64 = withContext(Dispatchers.IO) { Attachments.imageToJpegBase64(context, uri) }
+                Attachments.clearCameraCache(context)
+                if (b64 == null) {
+                    vm.notice = "Nie udało się odczytać zdjęcia."
+                } else {
+                    vm.send("Co widzisz na tym zdjęciu? Opisz to krótko po polsku.", b64, "Zdjęcie z kamery")
+                    nav.navigate(Routes.CHAT) { launchSingleTop = true }
+                }
+            }
         } else {
-            addMessage(ChatMessage(Kind.NOTICE, Messages.forSpeechError(code)))
+            Attachments.clearCameraCache(context)
         }
     }
 
-    override fun onSoundLevel(rmsDb: Float) {
-        if (state != UiState.LISTENING) return
-        val scale = 1f + (rmsDb.coerceIn(0f, 10f) / 10f) * 0.35f
-        micRing.scaleX = scale
-        micRing.scaleY = scale
-    }
-
-    // ---------- Tekst ----------
-
-    private fun submitTypedText() {
-        val text = input.text.toString().trim()
-        if (text.isEmpty()) return
-        if (state == UiState.THINKING) {
-            stateText.text = getString(R.string.state_wait)
-            return
+    val fileLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val attachment = withContext(Dispatchers.IO) { Attachments.readPickedFile(context, uri) }
+                when (attachment) {
+                    is PickedFile.Image -> vm.send("Co jest na tym obrazie? Opisz krótko po polsku.", attachment.base64, "Obraz: ${attachment.name}")
+                    is PickedFile.Text -> vm.send(
+                        "Przeanalizuj ten plik i streść go po polsku.\n\nPlik: ${attachment.name}\n---\n${attachment.content}",
+                        null,
+                        "Plik: ${attachment.name}" + if (attachment.truncated) " (skrócony)" else "",
+                    )
+                    is PickedFile.Unsupported -> vm.notice = attachment.reason
+                }
+                if (attachment !is PickedFile.Unsupported) nav.navigate(Routes.CHAT) { launchSingleTop = true }
+            }
         }
-        if (state == UiState.LISTENING) speech.cancel()
-        if (state == UiState.SPEAKING) voice.stop()
-        input.setText("")
-        (getSystemService(INPUT_METHOD_SERVICE) as InputMethodManager).hideSoftInputFromWindow(input.windowToken, 0)
-        setState(UiState.IDLE)
-        sendToAi(text)
     }
 
-    // ---------- AI ----------
+    if (micBlockedDialog) {
+        AlertDialog(
+            onDismissRequest = { micBlockedDialog = false },
+            title = { Text("Mikrofon zablokowany") },
+            text = {
+                Text(
+                    "Zgoda na mikrofon została odrzucona. Otwórz ustawienia aplikacji → Uprawnienia → Mikrofon " +
+                        "i wybierz „Zezwalaj tylko podczas używania aplikacji”. Do tego czasu możesz pisać polecenia tekstem.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    micBlockedDialog = false
+                    openSettings()
+                }) { Text("Otwórz ustawienia") }
+            },
+            dismissButton = { TextButton(onClick = { micBlockedDialog = false }) { Text("Anuluj") } },
+        )
+    }
 
-    private fun sendToAi(text: String) {
-        addMessage(ChatMessage(Kind.USER, text))
-        setState(UiState.THINKING)
-        val snapshot = history.toList()
-        lifecycleScope.launch {
-            when (val result = ai.chat(snapshot)) {
-                is AiResult.Success -> {
-                    addMessage(ChatMessage(Kind.ASSISTANT, result.text))
-                    setConnection(true, getString(R.string.conn_ok))
-                    if (settings.voiceReplies && voice.status == VoiceOutput.Status.READY && voice.speak(result.text)) {
-                        setState(UiState.SPEAKING)
-                    } else {
-                        setState(UiState.IDLE)
+    return remember(vm) {
+        AppActions(
+            startVoice = {
+                vm.onMicTapped {
+                    val granted = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) ==
+                        PackageManager.PERMISSION_GRANTED
+                    if (granted) vm.startListening() else micLauncher.launch(Manifest.permission.RECORD_AUDIO)
+                }
+            },
+            takePhoto = {
+                val dir = File(context.cacheDir, "camera").apply { mkdirs() }
+                val file = File(dir, "photo_${System.currentTimeMillis()}.jpg")
+                val uri = FileProvider.getUriForFile(context, "${context.packageName}.files", file)
+                pendingPhoto = uri
+                try {
+                    cameraLauncher.launch(uri)
+                } catch (e: ActivityNotFoundException) {
+                    pendingPhoto = null
+                    vm.notice = "Nie znaleziono aplikacji aparatu."
+                }
+            },
+            pickFile = {
+                try {
+                    fileLauncher.launch(arrayOf("text/*", "image/*", "application/json"))
+                } catch (e: ActivityNotFoundException) {
+                    vm.notice = "Nie znaleziono aplikacji do wyboru plików."
+                }
+            },
+            webSearch = { query ->
+                val q = query.trim()
+                if (q.isNotEmpty()) {
+                    try {
+                        context.startActivity(Intent(Intent.ACTION_WEB_SEARCH).putExtra(SearchManager.QUERY, q))
+                    } catch (e: ActivityNotFoundException) {
+                        try {
+                            context.startActivity(
+                                Intent(Intent.ACTION_VIEW, Uri.parse("https://www.google.com/search?q=" + Uri.encode(q))),
+                            )
+                        } catch (e2: ActivityNotFoundException) {
+                            vm.notice = "Brak przeglądarki internetowej."
+                        }
                     }
                 }
-                is AiResult.Failure -> {
-                    addMessage(ChatMessage(Kind.NOTICE, Messages.forFailure(result.reason, result.detail)))
-                    setState(UiState.IDLE)
-                    refreshConnection()
+            },
+            requestPermission = { permission, callback ->
+                if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) {
+                    callback(true)
+                } else {
+                    permissionCallback = callback
+                    permissionLauncher.launch(permission)
                 }
-            }
-        }
-    }
-
-    private fun refreshConnection() {
-        setConnection(null, getString(R.string.conn_checking))
-        lifecycleScope.launch {
-            when (val h = ai.health()) {
-                is HealthResult.Success -> when {
-                    !h.health.configured -> setConnection(false, getString(R.string.conn_no_key))
-                    h.health.auth == "invalid" -> setConnection(false, getString(R.string.conn_bad_token))
-                    else -> setConnection(true, getString(R.string.conn_ok))
-                }
-                is HealthResult.Failure -> setConnection(false, Messages.forFailure(h.reason, h.detail))
-            }
-        }
-    }
-
-    private fun setConnection(ok: Boolean?, label: String) {
-        val color = when (ok) {
-            true -> R.color.success
-            false -> R.color.error
-            null -> R.color.text_secondary
-        }
-        connectionDot.background.mutate().setTint(ContextCompat.getColor(this, color))
-        connectionText.text = label
-    }
-
-    // ---------- Głos ----------
-
-    override fun onVoiceStatus(status: VoiceOutput.Status) {
-        when (status) {
-            VoiceOutput.Status.NO_POLISH -> addMessage(ChatMessage(Kind.NOTICE, getString(R.string.err_no_polish_tts)))
-            VoiceOutput.Status.FAILED -> addMessage(ChatMessage(Kind.NOTICE, getString(R.string.err_tts_failed)))
-            else -> Unit
-        }
-    }
-
-    override fun onSpeakingStarted() {
-        if (state == UiState.SPEAKING) stateText.text = getString(R.string.state_speaking)
-    }
-
-    override fun onSpeakingFinished() {
-        if (state == UiState.SPEAKING) setState(UiState.IDLE)
-    }
-
-    // ---------- Pomocnicze ----------
-
-    private fun addMessage(message: ChatMessage) {
-        history.add(message)
-        adapter.notifyItemInserted(history.size - 1)
-        list.scrollToPosition(history.size - 1)
-    }
-
-    private fun setState(newState: UiState) {
-        state = newState
-        stateText.text = when (newState) {
-            UiState.IDLE -> getString(R.string.state_idle)
-            UiState.LISTENING -> getString(R.string.state_listening)
-            UiState.THINKING -> getString(R.string.state_thinking)
-            UiState.SPEAKING -> getString(R.string.state_speaking)
-        }
-        micButton.setImageResource(if (newState == UiState.LISTENING) R.drawable.ic_stop else R.drawable.ic_mic)
-        micButton.contentDescription = getString(
-            if (newState == UiState.LISTENING) R.string.mic_stop else R.string.mic_start,
+            },
+            openAppSettings = { openSettings() },
         )
-        animateRing(newState != UiState.IDLE)
-        if (newState != UiState.LISTENING) {
-            micRing.scaleX = 1f
-            micRing.scaleY = 1f
-        }
-    }
-
-    private fun animateRing(active: Boolean) {
-        if (active) {
-            if (ringAnimator == null) {
-                ringAnimator = ObjectAnimator.ofPropertyValuesHolder(
-                    micRing,
-                    PropertyValuesHolder.ofFloat(View.ALPHA, 0.35f, 1f),
-                ).apply {
-                    duration = 700
-                    repeatMode = ValueAnimator.REVERSE
-                    repeatCount = ValueAnimator.INFINITE
-                    start()
-                }
-            }
-        } else {
-            ringAnimator?.cancel()
-            ringAnimator = null
-            micRing.alpha = 0.6f
-        }
     }
 }

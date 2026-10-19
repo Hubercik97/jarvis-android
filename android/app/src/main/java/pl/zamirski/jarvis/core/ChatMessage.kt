@@ -10,4 +10,8 @@ enum class Kind(val wire: String) {
 data class ChatMessage(
     val kind: Kind,
     val text: String,
+    /** Zdjęcie JPEG w base64 (tylko wiadomości użytkownika, np. z przycisku Kamera). */
+    val imageBase64: String? = null,
+    /** Krótki opis załącznika do pokazania w rozmowie, np. „📷 zdjęcie” lub nazwa pliku. */
+    val attachmentLabel: String? = null,
 )

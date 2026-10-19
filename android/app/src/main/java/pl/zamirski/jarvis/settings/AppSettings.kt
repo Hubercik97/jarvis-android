@@ -22,7 +22,13 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean(KEY_VOICE, true)
         set(value) = prefs.edit().putBoolean(KEY_VOICE, value).apply()
 
+    /** Miasto dla pogody; puste = przybliżona lokalizacja telefonu. */
+    var weatherCity: String
+        get() = prefs.getString(KEY_CITY, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_CITY, value.trim()).apply()
+
     private companion object {
+        const val KEY_CITY = "weather_city"
         const val KEY_URL = "backend_url"
         const val KEY_TOKEN = "app_token"
         const val KEY_VOICE = "voice_replies"
