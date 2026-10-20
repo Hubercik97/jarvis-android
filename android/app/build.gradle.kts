@@ -5,10 +5,14 @@ plugins {
 
 // Adres backendu można wstrzyknąć w GitHub Actions (zmienna repozytorium JARVIS_BACKEND_URL).
 // To NIE jest sekret — klucz API modelu AI nigdy nie trafia do aplikacji.
+// Przyjmujemy wyłącznie adres https:// bez spacji i cudzysłowów; cokolwiek innego = brak adresu
+// (aplikacja pokaże wtedy „Brak adresu backendu AI” zamiast łączyć się z niepewnym serwerem).
 val defaultBackendUrl: String =
     (System.getenv("JARVIS_BACKEND_URL") ?: (project.findProperty("jarvisBackendUrl") as String?) ?: "")
         .trim()
-        .replace("\"", "")
+        .trimEnd('/')
+        .takeIf { Regex("^https://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~/-]*)?$").matches(it) }
+        ?: ""
 
 val ciRunNumber: Int = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
 

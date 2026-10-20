@@ -48,14 +48,8 @@ Aplikacja nie zapisuje nagrań głosu.
 ## Konfiguracja (z telefonu)
 
 ### 1. Backend AI (jednorazowo)
-1. Załóż darmowe konto Cloudflare, utwórz API Token (szablon „Edit Cloudflare Workers”), skopiuj Account ID.
-2. Klucz API modelu: console.anthropic.com → API Keys.
-3. W GitHub: repozytorium → Settings → Secrets and variables → Actions → **New repository secret**:
-   - `CLOUDFLARE_API_TOKEN`, `CLOUDFLARE_ACCOUNT_ID`
-   - `ANTHROPIC_API_KEY`
-   - `JARVIS_APP_TOKEN` — dowolny długi losowy ciąg (to samo wpiszesz w aplikacji)
-4. Actions → **Jarvis — wdrożenie backendu** → Run workflow. W logu kroku „Wdróż Worker” będzie adres `https://jarvis-backend.<konto>.workers.dev`.
-5. (Opcjonalnie) Settings → Variables → `JARVIS_BACKEND_URL` = ten adres — kolejne APK będą go miały domyślnie.
+Pełna instrukcja krok po kroku z telefonu: **[docs/BACKEND_SETUP.md](BACKEND_SETUP.md)**
+(klucz API, konto Cloudflare, 4 sekrety GitHub, wdrożenie testowe `jarvis-backend-test`, konfiguracja aplikacji).
 
 ### Podgląd ekranów
 Każdy build uruchamia też zadanie **Podgląd ekranów** (Paparazzi, bez emulatora). Zrzuty PNG są w artefakcie
@@ -86,5 +80,5 @@ Jeśli cache wygaśnie (7 dni bez buildów), Android zgłosi konflikt podpisu: o
 
 ## Bezpieczeństwo
 - Klucz API modelu jest wyłącznie w sekretach GitHub/Cloudflare, nigdy w APK.
-- `JARVIS_APP_TOKEN` chroni backend przed obcymi (bez niego każdy znający adres mógłby zużywać Twój klucz).
+- `JARVIS_APP_TOKEN` chroni backend przed obcymi. Bez ustawionego tokenu backend odrzuca wszystkie rozmowy (fail-closed).
 - Do serwera wysyłany jest tylko tekst bieżącej rozmowy (max 20 ostatnich wiadomości). Nic nie jest zapisywane na serwerze.

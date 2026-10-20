@@ -1,14 +1,26 @@
-name: Jarvis — wdrożenie backendu (Cloudflare)
+name: Jarvis — wdrożenie backendu (test)
 
-# Uruchamiane tylko ręcznie: Actions → "Jarvis — wdrożenie backendu" → Run workflow.
+# Wdrożenie odbywa się WYŁĄCZNIE po ręcznym uruchomieniu (workflow_dispatch) i tylko
+# do środowiska testowego: Worker "jarvis-backend-test". Produkcja nie jest tu wdrażana.
+# Push zmieniający backend uruchamia tylko testy i sprawdzenie, które sekrety są ustawione
+# (same nazwy, nigdy wartości).
 on:
   workflow_dispatch:
+  push:
+    paths:
+      - "backend/**"
+      - ".github/workflows/backend-deploy.yml"
 
 permissions:
   contents: read
 
+concurrency:
+  group: backend-deploy-test
+  cancel-in-progress: false
+
 jobs:
-  deploy:
+  check:
+    name: Testy i konfiguracja
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
@@ -16,28 +28,74 @@ jobs:
         with:
           node-version: 20
 
-      - name: Testy przed wdrożeniem
+      - name: Testy backendu
         working-directory: backend
         run: node --test
 
-      - name: Sprawdź sekrety
+      - name: Które sekrety są ustawione (tylko nazwy)
         env:
-          CF_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          CF_ACCOUNT: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          JARVIS_APP_TOKEN: ${{ secrets.JARVIS_APP_TOKEN }}
         run: |
-          if [ -z "$CF_TOKEN" ] || [ -z "$CF_ACCOUNT" ]; then
-            echo "::error::Brak sekretów CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID — dodaj je w Settings → Secrets and variables → Actions."
+          missing=""
+          for n in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID ANTHROPIC_API_KEY JARVIS_APP_TOKEN; do
+            if [ -z "${!n}" ]; then missing="$missing $n"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::warning title=Brakujące sekrety::$missing"
+          else
+            echo "::notice title=Sekrety::Wszystkie 4 sekrety są ustawione."
+          fi
+          if [ -n "$JARVIS_APP_TOKEN" ] && [ ${#JARVIS_APP_TOKEN} -lt 32 ]; then
+            echo "::warning title=Token aplikacji::JARVIS_APP_TOKEN jest krótszy niż 32 znaki — użyj dłuższego."
+          fi
+
+  deploy:
+    name: Wdrożenie testowe + test dymny
+    needs: check
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Wymagane sekrety
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          JARVIS_APP_TOKEN: ${{ secrets.JARVIS_APP_TOKEN }}
+        run: |
+          missing=""
+          for n in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID ANTHROPIC_API_KEY JARVIS_APP_TOKEN; do
+            if [ -z "${!n}" ]; then missing="$missing $n"; fi
+          done
+          if [ -n "$missing" ]; then
+            echo "::error title=Brakujące sekrety::$missing — dodaj je w Settings → Secrets and variables → Actions."
             exit 1
           fi
 
-      - name: Wdróż Worker
+      - name: Wdróż Worker (test)
+        id: deploy
         working-directory: backend
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
-        run: npx --yes wrangler@3 deploy
+        run: |
+          npx --yes wrangler@3 deploy --env test 2>&1 | tee deploy.log
+          URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1)
+          if [ -z "$URL" ]; then
+            echo "::error title=Wdrożenie::Nie znaleziono adresu workers.dev. Jeśli konto Cloudflare jest nowe, otwórz raz Workers & Pages w panelu Cloudflare, aby utworzyć subdomenę workers.dev."
+            exit 1
+          fi
+          echo "url=$URL" >> "$GITHUB_OUTPUT"
+          echo "::notice title=Adres backendu testowego::$URL"
 
-      - name: Ustaw sekrety Workera
+      - name: Ustaw sekrety Workera (test)
         working-directory: backend
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -45,13 +103,13 @@ jobs:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           APP_TOKEN: ${{ secrets.JARVIS_APP_TOKEN }}
         run: |
-          if [ -n "$ANTHROPIC_API_KEY" ]; then
-            printf '%s' "$ANTHROPIC_API_KEY" | npx --yes wrangler@3 secret put ANTHROPIC_API_KEY
-          else
-            echo "::warning::Brak sekretu ANTHROPIC_API_KEY — backend będzie zgłaszał brak klucza."
-          fi
-          if [ -n "$APP_TOKEN" ]; then
-            printf '%s' "$APP_TOKEN" | npx --yes wrangler@3 secret put APP_TOKEN
-          else
-            echo "::warning::Brak sekretu JARVIS_APP_TOKEN — backend jest dostępny bez tokenu."
-          fi
+          printf '%s' "$ANTHROPIC_API_KEY" | npx --yes wrangler@3 secret put ANTHROPIC_API_KEY --env test > /dev/null
+          printf '%s' "$APP_TOKEN" | npx --yes wrangler@3 secret put APP_TOKEN --env test > /dev/null
+          echo "Sekrety ustawione (wartości nie są wypisywane)."
+
+      - name: Test dymny (/health, /chat z AI, odrzucenie bez tokenu)
+        working-directory: backend
+        env:
+          BACKEND_URL: ${{ steps.deploy.outputs.url }}
+          APP_TOKEN: ${{ secrets.JARVIS_APP_TOKEN }}
+        run: node smoke.mjs

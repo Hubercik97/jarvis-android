@@ -72,6 +72,12 @@ class ChatProtocolTest {
     }
 
     @Test
+    fun `health reports server without app token and treats missing field as not authorized`() {
+        assertEquals("missing", ChatProtocol.parseHealth("""{"ok":true,"configured":true,"model":"m","auth":"missing"}""").auth)
+        assertEquals("invalid", ChatProtocol.parseHealth("""{"ok":true,"configured":true,"model":"m"}""").auth)
+    }
+
+    @Test
     fun `parseError tolerates empty and non json bodies`() {
         assertEquals(null, ChatProtocol.parseError(null))
         assertEquals(null, ChatProtocol.parseError("oops"))

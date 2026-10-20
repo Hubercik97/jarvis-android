@@ -2,10 +2,20 @@ name = "jarvis-backend"
 main = "worker.js"
 compatibility_date = "2026-10-01"
 
-# Sekrety ustawiasz w panelu Cloudflare (Workers → jarvis-backend → Settings → Variables and Secrets)
-# albo przez workflow "Backend — wdrożenie" z sekretów GitHub:
+# Bez logów żądań w panelu Cloudflare (treść rozmów nie trafia do logów).
+[observability]
+enabled = false
+
+# Środowisko testowe: osobny Worker "jarvis-backend-test" z własnymi sekretami.
+# Wdrażany tylko ręcznie workflowem "Jarvis — wdrożenie backendu (test)".
+# Produkcyjny "jarvis-backend" (bez --env) nie jest wdrażany automatycznie.
+[env.test]
+name = "jarvis-backend-test"
+
+[env.test.observability]
+enabled = false
+
+# Sekrety (ustawiane przez workflow z sekretów GitHub, nigdy w tym pliku):
 #   ANTHROPIC_API_KEY  — klucz API modelu
-#   APP_TOKEN          — token aplikacji (ten sam wpisujesz w aplikacji na ekranie Status)
-# Opcjonalnie:
-# [vars]
-# MODEL = "claude-haiku-5-5"
+#   APP_TOKEN          — token aplikacji (ten sam wpisujesz w aplikacji w Ustawieniach)
+# Opcjonalnie zmienna MODEL (domyślnie claude-haiku-5-5).

@@ -8,7 +8,7 @@ data class BackendHealth(
     val ok: Boolean,
     val configured: Boolean,
     val model: String,
-    /** "ok", "invalid" albo "none" (backend bez tokenu aplikacji). */
+    /** "ok", "invalid" (brak/błędny token) albo "missing" (serwer bez APP_TOKEN — odrzuca rozmowy). */
     val auth: String,
 )
 
@@ -78,7 +78,7 @@ object ChatProtocol {
             ok = json.optBoolean("ok", false),
             configured = json.optBoolean("configured", false),
             model = json.optString("model", ""),
-            auth = json.optString("auth", "none"),
+            auth = json.optString("auth", "invalid"),
         )
     }
 }

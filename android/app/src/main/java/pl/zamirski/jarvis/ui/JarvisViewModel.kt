@@ -326,7 +326,11 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
             connection = when (val h = ai.health()) {
                 is HealthResult.Success -> when {
                     !h.health.configured -> ConnectionState.Problem("Serwer AI działa, ale nie ma klucza API modelu")
-                    h.health.auth == "invalid" -> ConnectionState.Problem("Błędny token aplikacji")
+                    h.health.auth == "missing" ->
+                        ConnectionState.Problem("Serwer nie ma ustawionego tokenu aplikacji — odrzuca rozmowy")
+                    h.health.auth == "invalid" && settings.appToken.isBlank() ->
+                        ConnectionState.Problem("Wpisz token aplikacji w Ustawieniach")
+                    h.health.auth != "ok" -> ConnectionState.Problem("Błędny token aplikacji")
                     else -> ConnectionState.Ok(h.health.model)
                 }
                 is HealthResult.Failure -> ConnectionState.Problem(Messages.forFailure(h.reason, h.detail))

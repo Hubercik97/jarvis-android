@@ -3,8 +3,12 @@
 //
 // Zmienne środowiskowe:
 //   ANTHROPIC_API_KEY  (sekret, wymagany)  — klucz API modelu Claude
-//   APP_TOKEN          (sekret, zalecany)  — wspólny token z aplikacją; bez niego każdy znający adres może używać Twojego klucza
-//   MODEL              (opcjonalny)        — domyślnie claude-haiku-5-5 (szybki, tani — dobry do rozmowy głosowej)
+//   APP_TOKEN          (sekret, wymagany)  — wspólny token z aplikacją. Bez niego /chat odrzuca KAŻDE żądanie (503),
+//                                            żeby nikt obcy nie zużywał Twojego klucza.
+//   MODEL              (opcjonalny)        — domyślnie claude-haiku-5-5 (szybki, tani — dobry do rozmowy głosowej);
+//                                            nazwa sprawdzona z listą modeli API 20.10.2026.
+//
+// Worker niczego nie loguje — ani treści rozmów, ani nagłówków, ani kluczy.
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 export const DEFAULT_MODEL = "claude-haiku-5-5";
@@ -21,21 +25,37 @@ export const SYSTEM_PROMPT = [
   "Jeśli czegoś nie wiesz, powiedz to wprost.",
 ].join(" ");
 
+// Bez nagłówków CORS: aplikacja Android nie jest przeglądarką, a strony WWW nie powinny wołać tego API.
 const JSON_HEADERS = {
   "content-type": "application/json; charset=utf-8",
-  "access-control-allow-origin": "*",
-  "access-control-allow-headers": "content-type, x-jarvis-token",
-  "access-control-allow-methods": "GET, POST, OPTIONS",
+  "cache-control": "no-store",
 };
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
-/** "ok" | "invalid" | "none" (gdy serwer nie ma ustawionego APP_TOKEN). */
+/** Porównanie w stałym czasie (nie zdradza, ile znaków tokenu się zgadza). */
+export function safeEqual(a, b) {
+  const enc = new TextEncoder();
+  const x = enc.encode(String(a));
+  const y = enc.encode(String(b));
+  let diff = x.length ^ y.length;
+  const n = Math.max(x.length, y.length);
+  for (let i = 0; i < n; i++) diff |= (x[i] ?? 0) ^ (y[i] ?? 0);
+  return diff === 0;
+}
+
+/**
+ * "ok"      — token z aplikacji zgodny,
+ * "invalid" — brak tokenu w żądaniu albo błędny,
+ * "missing" — serwer nie ma ustawionego APP_TOKEN (wtedy /chat zawsze odmawia).
+ */
 export function authState(request, env) {
-  if (!env.APP_TOKEN) return "none";
-  return request.headers.get("x-jarvis-token") === env.APP_TOKEN ? "ok" : "invalid";
+  if (!env.APP_TOKEN) return "missing";
+  const given = request.headers.get("x-jarvis-token");
+  if (!given) return "invalid";
+  return safeEqual(given, env.APP_TOKEN) ? "ok" : "invalid";
 }
 
 /**
@@ -98,7 +118,8 @@ export function extractText(data) {
 
 async function handleChat(request, env) {
   const auth = authState(request, env);
-  if (auth === "invalid") return json({ error: "Nieprawidłowy token aplikacji" }, 401);
+  if (auth === "missing") return json({ error: "Serwer nie ma skonfigurowanego tokenu aplikacji" }, 503);
+  if (auth !== "ok") return json({ error: "Nieprawidłowy token aplikacji" }, 401);
   if (!env.ANTHROPIC_API_KEY) return json({ error: "Serwer nie ma skonfigurowanego klucza API modelu" }, 503);
 
   let body;
@@ -150,7 +171,7 @@ async function handleChat(request, env) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    if (request.method === "OPTIONS") return new Response(null, { status: 204, headers: JSON_HEADERS });
+    if (request.method === "OPTIONS") return new Response(null, { status: 204 });
 
     if (url.pathname === "/health" && request.method === "GET") {
       return json({

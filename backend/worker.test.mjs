@@ -1,6 +1,6 @@
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import worker, { normalizeMessages, extractText, toModelMessages, DEFAULT_MODEL } from "./worker.js";
+import worker, { normalizeMessages, extractText, toModelMessages, safeEqual, DEFAULT_MODEL } from "./worker.js";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -29,7 +29,45 @@ test("health without key says not configured", async () => {
   const res = await worker.fetch(new Request("https://jarvis.test/health"), {});
   const body = await res.json();
   assert.equal(body.configured, false);
-  assert.equal(body.auth, "none");
+  assert.equal(body.auth, "missing");
+});
+
+test("health with correct token reports ok, without token reports invalid", async () => {
+  const ok = await worker.fetch(new Request("https://jarvis.test/health", { headers: { "x-jarvis-token": "sekret" } }), env);
+  assert.equal((await ok.json()).auth, "ok");
+  const none = await worker.fetch(new Request("https://jarvis.test/health"), env);
+  assert.equal((await none.json()).auth, "invalid");
+});
+
+test("chat is refused when server has no app token configured (fail-closed)", async () => {
+  let called = false;
+  globalThis.fetch = async () => {
+    called = true;
+    return new Response("{}", { status: 200 });
+  };
+  const res = await worker.fetch(chatRequest([{ role: "user", content: "hej" }], "cokolwiek"), { ANTHROPIC_API_KEY: "test-key" });
+  assert.equal(res.status, 503);
+  assert.match((await res.json()).error, /tokenu aplikacji/);
+  assert.equal(called, false);
+});
+
+test("chat without token header is rejected", async () => {
+  const res = await worker.fetch(chatRequest([{ role: "user", content: "hej" }], null), env);
+  assert.equal(res.status, 401);
+});
+
+test("responses carry no CORS wildcard and are not cached", async () => {
+  const res = await worker.fetch(new Request("https://jarvis.test/health"), env);
+  assert.equal(res.headers.get("access-control-allow-origin"), null);
+  assert.equal(res.headers.get("cache-control"), "no-store");
+});
+
+test("safeEqual compares exactly", () => {
+  assert.equal(safeEqual("abc", "abc"), true);
+  assert.equal(safeEqual("abc", "abd"), false);
+  assert.equal(safeEqual("abc", "abcd"), false);
+  assert.equal(safeEqual("", "a"), false);
+  assert.equal(safeEqual("zażółć", "zażółć"), true);
 });
 
 test("chat rejects wrong app token", async () => {
@@ -37,9 +75,10 @@ test("chat rejects wrong app token", async () => {
   assert.equal(res.status, 401);
 });
 
-test("chat without key returns 503", async () => {
-  const res = await worker.fetch(chatRequest([{ role: "user", content: "hej" }], null), {});
+test("chat without model key returns 503", async () => {
+  const res = await worker.fetch(chatRequest([{ role: "user", content: "hej" }]), { APP_TOKEN: "sekret" });
   assert.equal(res.status, 503);
+  assert.match((await res.json()).error, /klucza API/);
 });
 
 test("chat forwards to model with key server-side and returns reply", async () => {
