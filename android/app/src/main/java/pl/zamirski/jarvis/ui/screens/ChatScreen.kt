@@ -22,7 +22,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AttachFile
 import androidx.compose.material.icons.filled.CameraAlt
-import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.AddComment
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Send
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -54,7 +55,7 @@ import pl.zamirski.jarvis.ui.components.ScreenFrame
 import pl.zamirski.jarvis.ui.theme.JColors
 
 @Composable
-fun ChatScreen(vm: JarvisViewModel, actions: AppActions, onBack: () -> Unit) {
+fun ChatScreen(vm: JarvisViewModel, actions: AppActions, onOpenHistory: () -> Unit, onBack: () -> Unit) {
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     LaunchedEffect(vm.messages.size) {
@@ -76,8 +77,11 @@ fun ChatScreen(vm: JarvisViewModel, actions: AppActions, onBack: () -> Unit) {
             onBack()
         },
         actions = {
-            IconButton(onClick = { vm.clearConversation() }) {
-                Icon(Icons.Filled.DeleteSweep, contentDescription = "Wyczyść rozmowę", tint = JColors.TextDim)
+            IconButton(onClick = onOpenHistory) {
+                Icon(Icons.Filled.History, contentDescription = "Historia rozmów", tint = JColors.Accent)
+            }
+            IconButton(onClick = { vm.newConversation() }) {
+                Icon(Icons.Filled.AddComment, contentDescription = "Nowa rozmowa (obecna trafi do historii)", tint = JColors.Accent)
             }
         },
     ) {
@@ -97,6 +101,16 @@ fun ChatScreen(vm: JarvisViewModel, actions: AppActions, onBack: () -> Unit) {
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.fillMaxWidth(),
         )
+        if (vm.handsFreeActive) {
+            Text(
+                "TRYB ROZMOWY · powiedz „to wszystko”, aby zakończyć",
+                color = JColors.Orange,
+                fontSize = 12.sp,
+                letterSpacing = 1.sp,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+            )
+        }
         Spacer(Modifier.height(8.dp))
 
         LazyColumn(
@@ -104,7 +118,7 @@ fun ChatScreen(vm: JarvisViewModel, actions: AppActions, onBack: () -> Unit) {
             modifier = Modifier.weight(1f).fillMaxWidth(),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(vm.messages) { Bubble(it) }
+            items(vm.messages) { MessageBubble(it) }
         }
 
         Row(
@@ -142,8 +156,9 @@ fun ChatScreen(vm: JarvisViewModel, actions: AppActions, onBack: () -> Unit) {
     }
 }
 
+/** Dymek wiadomości — używany w rozmowie i w historii. */
 @Composable
-private fun Bubble(m: ChatMessage) {
+fun MessageBubble(m: ChatMessage) {
     val (align, bg, border, label, labelColor) = when (m.kind) {
         Kind.USER -> Style(Alignment.CenterEnd, JColors.CardSolid, JColors.CardBorder, "TY", JColors.TextDim)
         Kind.ASSISTANT -> Style(Alignment.CenterStart, JColors.Card, JColors.Accent.copy(alpha = 0.6f), "JARVIS", JColors.Accent)

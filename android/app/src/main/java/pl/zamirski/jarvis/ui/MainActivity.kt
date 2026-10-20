@@ -23,7 +23,9 @@ import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import android.view.WindowManager
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -39,6 +41,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.core.content.FileProvider
+import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
@@ -54,6 +57,7 @@ import pl.zamirski.jarvis.ui.screens.CalendarScreen
 import pl.zamirski.jarvis.ui.screens.ChatScreen
 import pl.zamirski.jarvis.ui.screens.ComputerScreen
 import pl.zamirski.jarvis.ui.screens.FeaturesScreen
+import pl.zamirski.jarvis.ui.screens.HistoryScreen
 import pl.zamirski.jarvis.ui.screens.HomeScreen
 import pl.zamirski.jarvis.ui.screens.NotesScreen
 import pl.zamirski.jarvis.ui.screens.RemindersScreen
@@ -77,6 +81,7 @@ object Routes {
     const val SMART_HOME = "smarthome"
     const val COMPUTER = "computer"
     const val SETTINGS = "settings"
+    const val HISTORY = "history"
 }
 
 /** Akcje wymagające systemu (uprawnienia, aparat, pliki, przeglądarka). */
@@ -90,12 +95,25 @@ class AppActions(
 )
 
 class MainActivity : ComponentActivity() {
+    // Ten sam egzemplarz co viewModel() w Compose (zakres: ta aktywność).
+    private val vm: JarvisViewModel by lazy { ViewModelProvider(this)[JarvisViewModel::class.java] }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         ReminderScheduler.ensureChannel(this)
         setContent {
             JarvisTheme { AppRoot() }
         }
+    }
+
+    override fun onStart() {
+        super.onStart()
+        vm.onAppStarted()
+    }
+
+    override fun onStop() {
+        vm.onAppStopped()
+        super.onStop()
     }
 }
 
@@ -104,11 +122,25 @@ private fun AppRoot() {
     val vm: JarvisViewModel = viewModel()
     val nav = rememberNavController()
     val actions = rememberAppActions(vm, nav)
+    val activity = LocalContext.current as ComponentActivity
+
+    // W trybie rozmowy ekran nie gaśnie — inaczej Android odciąłby mikrofon.
+    DisposableEffect(vm.handsFreeActive) {
+        if (vm.handsFreeActive) {
+            activity.window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        } else {
+            activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+        }
+        onDispose { activity.window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON) }
+    }
 
     Box(Modifier.fillMaxSize()) {
         NavHost(navController = nav, startDestination = Routes.HOME) {
             composable(Routes.HOME) { HomeScreen(vm, actions) { nav.navigate(it) } }
-            composable(Routes.CHAT) { ChatScreen(vm, actions) { nav.popBackStack() } }
+            composable(Routes.CHAT) {
+                ChatScreen(vm, actions, onOpenHistory = { nav.navigate(Routes.HISTORY) }) { nav.popBackStack() }
+            }
+            composable(Routes.HISTORY) { HistoryScreen(vm) { nav.popBackStack() } }
             composable(Routes.FEATURES) { FeaturesScreen(onBack = { nav.popBackStack() }) { nav.navigate(it) } }
             composable(Routes.WEATHER) { WeatherScreen(vm, actions) { nav.popBackStack() } }
             composable(Routes.CALENDAR) { CalendarScreen(vm, actions) { nav.popBackStack() } }

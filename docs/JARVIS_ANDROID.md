@@ -29,6 +29,8 @@ dolny pasek z dużym mikrofonem.
 |---|---|
 | Mikrofon → polska mowa → AI → odpowiedź głosem | ✅ (wymaga skonfigurowanego backendu) |
 | Pisanie poleceń tekstem | ✅ |
+| Historia rozmów | ✅ zapisana na telefonie (maks. 50 rozmów, bez zdjęć); bieżąca rozmowa wraca po ponownym uruchomieniu |
+| Tryb rozmowy (bez dotykania ekranu) | ✅ po odpowiedzi Jarvis sam znowu słucha; koniec: „to wszystko” / „dziękuję”. Tylko przy otwartej aplikacji — ekran nie gaśnie w trakcie |
 | Kamera → zdjęcie → opis przez AI | ✅ (aparat systemowy, zdjęcie usuwane po wysłaniu) |
 | Pliki (tekst, JSON, obrazy) → analiza AI | ✅ |
 | Internet → wyszukiwanie w przeglądarce | ✅ (otwiera wyszukiwarkę; AI samo nie przegląda sieci) |
@@ -38,7 +40,8 @@ dolny pasek z dużym mikrofonem.
 | Notatki, Zadania | ✅ zapisywane lokalnie, z dyktowaniem |
 | Inteligentny dom | ❌ niepodłączone — ekran mówi to wprost, bez fałszywych przełączników |
 | Komputer / panel Windows | ❌ planowane — architektura: `sync/SyncRepository` + backend |
-| Pamięć między sesjami, okulary, słowo „Jarvis” w tle | ❌ planowane |
+| Pamięć AI między rozmowami, okulary | ❌ planowane |
+| Słowo „Jarvis” w tle / przy zgaszonym ekranie, słuchawki Bluetooth | ❌ planowane — wymaga testów na Galaxy S21, nie jest jeszcze zaimplementowane |
 
 Aplikacja nie zapisuje nagrań głosu.
 
@@ -53,6 +56,11 @@ Aplikacja nie zapisuje nagrań głosu.
    - `JARVIS_APP_TOKEN` — dowolny długi losowy ciąg (to samo wpiszesz w aplikacji)
 4. Actions → **Jarvis — wdrożenie backendu** → Run workflow. W logu kroku „Wdróż Worker” będzie adres `https://jarvis-backend.<konto>.workers.dev`.
 5. (Opcjonalnie) Settings → Variables → `JARVIS_BACKEND_URL` = ten adres — kolejne APK będą go miały domyślnie.
+
+### Podgląd ekranów
+Każdy build uruchamia też zadanie **Podgląd ekranów** (Paparazzi, bez emulatora). Zrzuty PNG są w artefakcie
+`podglad-ekranow-N`. Lokalnie: `gradle -Ppreview :app:recordPaparazziDebug` w folderze `android/`.
+Zadanie jest niezależne — jego błąd nie blokuje testów ani APK.
 
 ### 2. Budowanie APK
 Każdy push zmieniający `android/` lub `backend/` uruchamia **Jarvis — budowanie APK**.

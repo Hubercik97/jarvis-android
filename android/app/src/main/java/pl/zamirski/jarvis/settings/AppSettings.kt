@@ -22,6 +22,11 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean(KEY_VOICE, true)
         set(value) = prefs.edit().putBoolean(KEY_VOICE, value).apply()
 
+    /** Tryb rozmowy: po odpowiedzi głosowej Jarvis sam znowu słucha (przy otwartej aplikacji). */
+    var handsFree: Boolean
+        get() = prefs.getBoolean(KEY_HANDS_FREE, false)
+        set(value) = prefs.edit().putBoolean(KEY_HANDS_FREE, value).apply()
+
     /** Miasto dla pogody; puste = przybliżona lokalizacja telefonu. */
     var weatherCity: String
         get() = prefs.getString(KEY_CITY, "") ?: ""
@@ -32,5 +37,6 @@ class AppSettings(context: Context) {
         const val KEY_URL = "backend_url"
         const val KEY_TOKEN = "app_token"
         const val KEY_VOICE = "voice_replies"
+        const val KEY_HANDS_FREE = "hands_free"
     }
 }

@@ -6,3 +6,6 @@ local.properties
 .idea/
 captures/
 *.keystore
+
+# Zrzuty z podglądu Paparazzi (tylko artefakt CI)
+app/src/test/snapshots/

@@ -53,6 +53,7 @@ fun SettingsScreen(vm: JarvisViewModel, actions: AppActions, onBack: () -> Unit)
     var token by remember { mutableStateOf(vm.settings.appToken) }
     var city by remember { mutableStateOf(vm.settings.weatherCity) }
     var voiceReplies by remember { mutableStateOf(vm.settings.voiceReplies) }
+    var handsFree by remember { mutableStateOf(vm.settings.handsFree) }
     var urlError by remember { mutableStateOf<String?>(null) }
     var refreshTick by remember { mutableStateOf(0) }
 
@@ -136,6 +137,19 @@ fun SettingsScreen(vm: JarvisViewModel, actions: AppActions, onBack: () -> Unit)
                         vm.settings.voiceReplies = it
                     })
                 }
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Tryb rozmowy", color = JColors.Text, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                    Switch(checked = handsFree, onCheckedChange = {
+                        handsFree = it
+                        vm.settings.handsFree = it
+                    })
+                }
+                InfoText(
+                    "Po odpowiedzi głosowej Jarvis sam znowu słucha — możesz rozmawiać bez dotykania ekranu. " +
+                        "Zakończ, mówiąc „to wszystko” albo „dziękuję”. Działa tylko przy otwartej aplikacji: " +
+                        "ekran nie gaśnie w trakcie rozmowy, a po przejściu do innej aplikacji nasłuch się zatrzymuje.",
+                )
             }
 
             SectionLabel("Pogoda")
@@ -180,7 +194,7 @@ fun SettingsScreen(vm: JarvisViewModel, actions: AppActions, onBack: () -> Unit)
                 InfoText(
                     "Aplikacja nie zapisuje nagrań głosu. Rozpoznawaniem mowy zajmuje się systemowa usługa Google na telefonie. " +
                         "Do serwera AI trafia tylko tekst bieżącej rozmowy oraz zdjęcia/pliki, które sam wyślesz. " +
-                        "Notatki, zadania i przypomnienia są zapisane tylko na tym telefonie.",
+                        "Historia rozmów (bez zdjęć), notatki, zadania i przypomnienia są zapisane tylko na tym telefonie.",
                 )
                 Spacer(Modifier.height(8.dp))
                 OutlinedButton(onClick = actions.openAppSettings) { Text("Uprawnienia aplikacji") }

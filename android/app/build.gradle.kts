@@ -12,6 +12,11 @@ val defaultBackendUrl: String =
 
 val ciRunNumber: Int = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 1
 
+// Podgląd ekranów (Paparazzi) działa tylko przy: gradle -Ppreview :app:recordPaparazziDebug
+// Zwykłe testy i budowanie APK w ogóle nie ładują tej wtyczki ani testów podglądu.
+val previewMode = project.hasProperty("preview")
+if (previewMode) apply(plugin = "app.cash.paparazzi")
+
 android {
     namespace = "pl.zamirski.jarvis"
     compileSdk = 34
@@ -56,6 +61,12 @@ android {
 
     testOptions {
         unitTests.isReturnDefaultValues = true
+    }
+
+    sourceSets {
+        getByName("test") {
+            if (previewMode) java.srcDir("src/preview/java")
+        }
     }
 }
 

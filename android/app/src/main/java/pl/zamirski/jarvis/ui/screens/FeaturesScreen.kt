@@ -9,6 +9,7 @@ import androidx.compose.material.icons.filled.Computer
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Forum
+import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Settings
@@ -34,6 +35,7 @@ private data class FeatureEntry(
 
 private val entries = listOf(
     FeatureEntry(Routes.CHAT, Icons.Filled.Forum, JColors.Accent, "Rozmowa", "Głos i tekst z AI"),
+    FeatureEntry(Routes.HISTORY, Icons.Filled.History, JColors.AccentBright, "Historia rozmów", "Zapisane rozmowy z Jarvisem"),
     FeatureEntry(Routes.WEATHER, Icons.Filled.WbSunny, JColors.Orange, "Pogoda", "Aktualne informacje i prognoza"),
     FeatureEntry(Routes.CALENDAR, Icons.Filled.DateRange, Color(0xFF8C7BFF), "Kalendarz", "Wydarzenia z kalendarza telefonu"),
     FeatureEntry(Routes.REMINDERS, Icons.Filled.Notifications, Color(0xFFFF7AA8), "Przypomnienia", "Ustaw przypomnienia"),
