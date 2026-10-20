@@ -46,6 +46,15 @@ import pl.zamirski.jarvis.ui.components.ScreenFrame
 import pl.zamirski.jarvis.ui.components.SectionLabel
 import pl.zamirski.jarvis.ui.theme.JColors
 import pl.zamirski.jarvis.voice.VoiceOutput
+import pl.zamirski.jarvis.service.WakeWordService
+import android.content.Intent
+import android.net.Uri
+import android.os.Build
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 
 @Composable
 fun SettingsScreen(vm: JarvisViewModel, actions: AppActions, onBack: () -> Unit) {
@@ -169,6 +178,9 @@ fun SettingsScreen(vm: JarvisViewModel, actions: AppActions, onBack: () -> Unit)
                 )
             }
 
+            SectionLabel("Słuchanie w tle")
+            BackgroundListeningCard(vm, actions)
+
             SectionLabel("Pogoda")
             GlassCard(Modifier.fillMaxWidth()) {
                 OutlinedTextField(
@@ -230,3 +242,83 @@ private fun StatusLine(ok: Boolean, name: String, good: String, bad: String) {
         modifier = Modifier.padding(vertical = 3.dp),
     )
 }
+
+/**
+ * Nasłuch słowa „Jarvis” w tle. Uczciwie pokazuje, czego brakuje (zgody, bateria) i jak działa rozpoznawanie.
+ */
+@Composable
+private fun BackgroundListeningCard(vm: JarvisViewModel, actions: AppActions) {
+    val context = LocalContext.current
+    val running by WakeWordService.running.collectAsState()
+    val status by WakeWordService.status.collectAsState()
+    var overlayOk by remember { mutableStateOf(android.provider.Settings.canDrawOverlays(context)) }
+    var micOk by remember { mutableStateOf(false) }
+
+    // Po powrocie z ustawień systemu odświeżamy stan zgód.
+    val owner = LocalLifecycleOwner.current
+    LaunchedEffect(owner) {
+        owner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            overlayOk = android.provider.Settings.canDrawOverlays(context)
+            micOk = ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        }
+    }
+
+    fun startService() {
+        actions.requestPermission(Manifest.permission.RECORD_AUDIO) { mic ->
+            if (mic) {
+                micOk = true
+                vm.settings.backgroundListening = true
+                WakeWordService.start(context)
+                // Bez zgody na powiadomienia usługa i tak działa, ale nie widać jej stanu — prosimy o zgodę.
+                if (Build.VERSION.SDK_INT >= 33) actions.requestPermission(Manifest.permission.POST_NOTIFICATIONS) { }
+            } else {
+                vm.notice = "Bez zgody na mikrofon Jarvis nie może słuchać."
+            }
+        }
+    }
+
+    GlassCard(Modifier.fillMaxWidth()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Słuchaj „Jarvis” w tle", color = JColors.Text, fontSize = 16.sp, modifier = Modifier.weight(1f))
+            Switch(checked = running, onCheckedChange = { on ->
+                if (on) {
+                    startService()
+                } else {
+                    vm.settings.backgroundListening = false
+                    WakeWordService.stop(context)
+                }
+            })
+        }
+        InfoText(
+            if (running) "Działa. Powiadomienie „Jarvis słucha w tle” pokazuje stan. Gdy Jarvis jest otwarty, nasłuch w tle czeka."
+            else "Wyłączone.",
+            if (running) JColors.Success else JColors.TextDim,
+        )
+        status?.let { InfoText(it, JColors.Warning) }
+        Spacer(Modifier.height(8.dp))
+        InfoText(
+            "Powiedz „Jarvis” i polecenie, np. „Jarvis, przełącz na kalendarz”, będąc w dowolnej aplikacji. " +
+                "Słowo jest wykrywane przez ciągłe rozpoznawanie mowy pl-PL: na telefonie, jeśli Android ma polski pakiet offline, " +
+                "w przeciwnym razie przez usługę mowy Google (dźwięk trafia wtedy do Google). Zużywa baterię. " +
+                "Część telefonów wydaje krótki dźwięk przy każdym wznowieniu słuchania.",
+        )
+        Spacer(Modifier.height(10.dp))
+        StatusLine(micOk, "Mikrofon", "zgoda przyznana", "brak zgody")
+        StatusLine(
+            overlayOk, "Przełączanie aplikacji z tła", "zgoda przyznana",
+            "potrzebna zgoda „Wyświetlanie nad innymi aplikacjami”",
+        )
+        if (!overlayOk) {
+            OutlinedButton(onClick = {
+                context.startActivity(
+                    Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:${context.packageName}"))
+                        .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK),
+                )
+            }) { Text("Zezwól na przełączanie aplikacji") }
+        }
+        Spacer(Modifier.height(6.dp))
+        InfoText("Samsung usypia aplikacje w tle. Ustaw: Bateria → Bez ograniczeń.")
+        OutlinedButton(onClick = actions.openAppSettings) { Text("Otwórz ustawienia baterii Jarvisa") }
+    }
+}
+

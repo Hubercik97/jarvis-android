@@ -52,6 +52,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import pl.zamirski.jarvis.data.ReminderScheduler
+import pl.zamirski.jarvis.service.AppVisibility
+import pl.zamirski.jarvis.service.WakeWordService
 import pl.zamirski.jarvis.ui.components.CardShape
 import pl.zamirski.jarvis.ui.screens.CalendarScreen
 import pl.zamirski.jarvis.ui.screens.ChatScreen
@@ -108,11 +110,20 @@ class MainActivity : ComponentActivity() {
 
     override fun onStart() {
         super.onStart()
+        AppVisibility.foreground.value = true
         vm.onAppStarted()
+        // Nasłuch w tle był włączony (np. przed restartem telefonu) — wznawiamy go, gdy Jarvis jest na ekranie,
+        // bo tylko wtedy Android pozwala uruchomić mikrofon w usłudze.
+        if (vm.settings.backgroundListening && !WakeWordService.running.value &&
+            ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        ) {
+            WakeWordService.start(this)
+        }
     }
 
     override fun onStop() {
         vm.onAppStopped()
+        AppVisibility.foreground.value = false
         super.onStop()
     }
 }

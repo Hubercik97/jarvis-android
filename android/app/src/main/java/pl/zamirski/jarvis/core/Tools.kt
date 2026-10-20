@@ -120,6 +120,12 @@ object ToolRegistry {
         ),
     )
 
+    /**
+     * Narzędzia otwierające ekran innej aplikacji. Z tła Android pozwala na to tylko aplikacjom
+     * ze zgodą „Wyświetlanie nad innymi aplikacjami” (SYSTEM_ALERT_WINDOW).
+     */
+    val LAUNCHES_UI = setOf(OPEN_APP, SET_ALARM, SET_TIMER, ADD_CALENDAR_EVENT, OPEN_SETTINGS)
+
     /** Nazwy narzędzi zgłaszane backendowi (AI może użyć tylko tych). */
     val names: List<String> get() = specs.map { it.name }
 

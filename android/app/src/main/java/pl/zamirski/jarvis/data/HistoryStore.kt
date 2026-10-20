@@ -48,6 +48,16 @@ class HistoryStore private constructor(context: Context) {
         currentFile.delete()
     }
 
+    /** Zapisuje/aktualizuje rozmowę w historii BEZ ruszania bieżącej rozmowy z ekranu (np. rozmowy z tła). */
+    @Synchronized
+    fun upsertArchived(c: Conversation) {
+        if (!c.hasUserContent) return
+        if (_archive.value.isEmpty()) _archive.value = ConversationCodec.decodeList(read(archiveFile))
+        val updated = ConversationCodec.prepend(_archive.value, c)
+        write(archiveFile, ConversationCodec.encodeList(updated))
+        _archive.value = updated
+    }
+
     @Synchronized
     fun delete(id: Long) {
         val updated = _archive.value.filterNot { it.id == id }

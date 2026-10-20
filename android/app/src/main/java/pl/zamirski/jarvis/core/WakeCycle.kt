@@ -32,6 +32,9 @@ object WakeCycle {
         object Enable : Event()
         object Disable : Event()
         data class WakeDetected(val score: Float) : Event()
+
+        /** „Jarvis, przełącz na kalendarz” — słowo i polecenie w jednej wypowiedzi. */
+        data class WakeWithCommand(val text: String) : Event()
         data class CommandHeard(val text: String) : Event()
         data class CommandFailed(val silence: Boolean) : Event()
         data class ReplyReady(val text: String) : Event()
@@ -85,6 +88,9 @@ object WakeCycle {
 
             State.Listening -> when (event) {
                 is Event.WakeDetected -> Result(State.Command, listOf(Effect.StopDetector, Effect.StartRecognition))
+                is Event.WakeWithCommand ->
+                    if (event.text.isBlank()) Result(State.Command, listOf(Effect.StopDetector, Effect.StartRecognition))
+                    else Result(State.Thinking, listOf(Effect.StopDetector, Effect.AskAi(event.text)))
                 is Event.DetectorError -> fail(1, event.message)
                 Event.MicBusy -> Result(State.Paused(PauseReason.MIC_BUSY), listOf(Effect.StopDetector, Effect.ScheduleRetry(BASE_RETRY_MS)))
                 Event.AppForeground -> Result(State.Paused(PauseReason.APP_IN_FOREGROUND), listOf(Effect.StopDetector))

@@ -33,6 +33,11 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean(KEY_BT_MIC, true)
         set(value) = prefs.edit().putBoolean(KEY_BT_MIC, value).apply()
 
+    /** Nasłuch słowa „Jarvis” w tle (usługa z powiadomieniem). Zapamiętane, żeby przełącznik pokazywał stan. */
+    var backgroundListening: Boolean
+        get() = prefs.getBoolean(KEY_BG, false)
+        set(value) = prefs.edit().putBoolean(KEY_BG, value).apply()
+
     /** Miasto dla pogody; puste = przybliżona lokalizacja telefonu. */
     var weatherCity: String
         get() = prefs.getString(KEY_CITY, "") ?: ""
@@ -45,5 +50,6 @@ class AppSettings(context: Context) {
         const val KEY_VOICE = "voice_replies"
         const val KEY_HANDS_FREE = "hands_free"
         const val KEY_BT_MIC = "bluetooth_mic"
+        const val KEY_BG = "background_listening"
     }
 }

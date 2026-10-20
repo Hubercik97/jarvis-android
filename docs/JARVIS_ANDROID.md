@@ -44,7 +44,7 @@ dolny pasek z dużym mikrofonem.
 | Komputer / panel Windows | ❌ planowane — architektura: `sync/SyncRepository` + backend |
 | Pamięć AI między rozmowami, okulary | ❌ planowane |
 | Słuchawki Bluetooth (mikrofon na czas słuchania, głos Jarvisa w słuchawkach) | ⚠️ zaimplementowane, **niesprawdzone na S21** — zob. [WAKE_WORD.md](WAKE_WORD.md) |
-| Słowo „Jarvis” w tle / przy zgaszonym ekranie | ❌ niewdrożone — gotowe detektory nie rozpoznają polskiego „Jarvis” (pomiar w [WAKE_WORD.md](WAKE_WORD.md)); czeka na wybór alternatywy |
+| Słowo „Jarvis” w tle (inne aplikacje) | ⚠️ zaimplementowane przez rozpoznawanie mowy, **do sprawdzenia na S21** — zob. [WAKE_WORD.md](WAKE_WORD.md) §7 |
 
 Aplikacja nie zapisuje nagrań głosu.
 

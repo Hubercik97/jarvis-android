@@ -91,3 +91,22 @@ Logika stanów jest już zaimplementowana i przetestowana: `core/WakeCycle.kt` (
 - Rozpoznawanie polecenia: dźwięk przetwarza systemowa usługa mowy Google (jak dotąd).
 - Detektor słowa (po wdrożeniu): przetwarzanie wyłącznie na telefonie, nic nie jest wysyłane ani zapisywane.
 - Aplikacja nie zapisuje nagrań. Do backendu trafia tylko rozpoznany tekst.
+
+## 7. Wdrożone: nasłuch w tle przez rozpoznawanie mowy (20.10.2026)
+
+Na prośbę właściciela, zanim powstanie własny detektor, nasłuch działa przez **ciągłe rozpoznawanie mowy pl-PL**
+i wyszukiwanie słowa „Jarvis” w rozpoznanym tekście (`core/WakeWord.kt`, testy `WakeWordTest`).
+
+- Usługa `service/WakeWordService` — pierwszoplanowa, typ `microphone`, stałe powiadomienie „Jarvis słucha w tle” z przyciskiem Wyłącz.
+- Rozpoznawanie: **na telefonie** (`createOnDeviceSpeechRecognizer`, Android 12+, jeśli jest polski pakiet offline),
+  inaczej usługa mowy Google — wtedy dźwięk trafia do Google przez cały czas nasłuchu. Tryb widać w powiadomieniu.
+- „Jarvis, przełącz na kalendarz” → polecenie od razu; samo „Jarvis” → „Słucham.” i nasłuch polecenia.
+- Polecenie: AI + narzędzia z rejestru (`service/BackgroundAssistant`). W tle **nie** są wykonywane działania wymagające potwierdzenia.
+- Otwieranie aplikacji z tła wymaga zgody **„Wyświetlanie nad innymi aplikacjami”** (ograniczenie Androida 10+).
+- Gdy ekran Jarvisa jest otwarty, nasłuch w tle czeka (mikrofonem zarządza aplikacja).
+- Rozmowy z tła trafiają do Historii (oznaczone „(w tle)”).
+- Start tylko z otwartej aplikacji; po restarcie telefonu wznawia się przy pierwszym otwarciu Jarvisa.
+
+Znane ograniczenia (do sprawdzenia na S21): krótki dźwięk systemowy przy każdym wznowieniu słuchania (zależy od usługi mowy),
+zużycie baterii i danych, skuteczność rozpoznania słowa w hałasie, działanie przy zgaszonym ekranie i w kieszeni,
+usypianie przez One UI (wymagane: Bateria → Bez ograniczeń).

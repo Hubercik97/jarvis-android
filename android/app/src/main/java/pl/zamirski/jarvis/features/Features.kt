@@ -34,6 +34,7 @@ object FeatureRegistry {
         Feature("smart_home", "Inteligentny dom", FeatureState.PLANNED),
         Feature("computer", "Panel Windows i sterowanie komputerem", FeatureState.PLANNED),
         Feature("glasses", "Okulary", FeatureState.PLANNED),
-        Feature("wake_word", "Wywołanie słowem „Jarvis” / nasłuch w tle i przy zgaszonym ekranie", FeatureState.PLANNED),
+        Feature("wake_word", "Nasłuch „Jarvis” w tle (inne aplikacje) — przez rozpoznawanie mowy", FeatureState.TESTING),
+        Feature("wake_word_model", "Własny detektor słowa „Jarvis” offline (mniej baterii, bez dźwięków)", FeatureState.PLANNED),
     )
 }
