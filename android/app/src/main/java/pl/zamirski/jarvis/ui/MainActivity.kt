@@ -152,6 +152,17 @@ private fun AppRoot() {
             composable(Routes.SETTINGS) { SettingsScreen(vm, actions) { nav.popBackStack() } }
         }
 
+        // Potwierdzenie działania wrażliwego (wiadomość, połączenie, usunięcie danych…) — zawsze ze szczegółami.
+        vm.confirmation?.let { details ->
+            AlertDialog(
+                onDismissRequest = { vm.answerConfirmation(false) },
+                title = { Text("Potwierdź działanie") },
+                text = { Text(details) },
+                confirmButton = { TextButton(onClick = { vm.answerConfirmation(true) }) { Text("Wykonaj") } },
+                dismissButton = { TextButton(onClick = { vm.answerConfirmation(false) }) { Text("Anuluj") } },
+            )
+        }
+
         val notice = vm.notice
         if (notice != null) {
             LaunchedEffect(notice) {

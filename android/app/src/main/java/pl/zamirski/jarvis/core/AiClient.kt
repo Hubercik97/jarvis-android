@@ -10,7 +10,8 @@ enum class FailureReason {
 }
 
 sealed class AiResult {
-    data class Success(val text: String) : AiResult()
+    /** text może być pusty, gdy AI tylko proponuje działania (actions). */
+    data class Success(val text: String, val actions: List<ToolCall> = emptyList()) : AiResult()
     data class Failure(val reason: FailureReason, val detail: String? = null) : AiResult()
 }
 
@@ -24,6 +25,10 @@ sealed class HealthResult {
  * Później można tu dołożyć pamięć, narzędzia (kamera, okulary, komputer) bez zmiany interfejsu użytkownika.
  */
 interface AiClient {
-    suspend fun chat(history: List<ChatMessage>): AiResult
+    suspend fun chat(
+        history: List<ChatMessage>,
+        tools: List<String> = emptyList(),
+        pending: ToolPending? = null,
+    ): AiResult
     suspend fun health(): HealthResult
 }

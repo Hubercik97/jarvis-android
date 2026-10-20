@@ -15,6 +15,11 @@ export const DEFAULT_MODEL = "claude-haiku-5-5";
 export const MAX_MESSAGES = 20;
 export const MAX_CHARS = 12000;
 export const MAX_IMAGE_B64 = 2_000_000;
+/** Największe poprawne żądanie z aplikacji to ok. 2,2 MB (zdjęcie + historia); powyżej — 413. */
+export const MAX_BODY_BYTES = 3_000_000;
+export const MAX_ACTIONS = 5;
+const MAX_TOOL_TEXT = 2000;
+const TOOL_ID_RE = /^[A-Za-z0-9_-]{1,64}$/;
 const IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 export const SYSTEM_PROMPT = [
@@ -24,6 +29,111 @@ export const SYSTEM_PROMPT = [
   "Gdy użytkownik dołączy zdjęcie z kamery, opisz je i odpowiedz na pytanie. Nie masz pamięci między rozmowami, internetu w czasie rzeczywistym ani dostępu do komputera użytkownika — nie udawaj, że je masz.",
   "Jeśli czegoś nie wiesz, powiedz to wprost.",
 ].join(" ");
+
+/** Dodatek do instrukcji, gdy aplikacja udostępnia narzędzia działań na telefonie. */
+export const TOOLS_PROMPT = [
+  "Masz narzędzia do wykonywania działań na telefonie użytkownika.",
+  "Gdy użytkownik prosi o działanie, które obsługuje narzędzie, użyj go zamiast opisywać, jak to zrobić.",
+  "Nie twierdź, że coś zostało zrobione, dopóki nie dostaniesz wyniku narzędzia.",
+  "Po wyniku powiedz jednym krótkim zdaniem, co zrobiłeś albo co się nie udało i dlaczego.",
+].join(" ");
+
+/**
+ * Narzędzia LOKALNE: backend tylko je proponuje, wykonuje je aplikacja na telefonie
+ * (po własnej walidacji i — gdy trzeba — po potwierdzeniu użytkownika).
+ * Model może użyć wyłącznie narzędzi z tej listy, które zgłosi aplikacja.
+ */
+export const TOOL_DEFS = {
+  open_app: {
+    description:
+      "Otwiera aplikację lub grę zainstalowaną na telefonie użytkownika. Użyj, gdy użytkownik prosi o otwarcie, " +
+      "uruchomienie lub włączenie aplikacji albo gry. Telefon sam dopasuje nazwę do zainstalowanych aplikacji.",
+    input_schema: {
+      type: "object",
+      properties: {
+        name: {
+          type: "string",
+          description:
+            "Nazwa aplikacji lub gry w mianowniku, bez słów „aplikacja”/„gra”, np. „Spotify”, „Mapy Google” " +
+            "(a nie „Mapach Google”).",
+          maxLength: 80,
+        },
+      },
+      required: ["name"],
+      additionalProperties: false,
+    },
+  },
+};
+
+/** Lista narzędzi zgłoszonych przez aplikację, ograniczona do znanych backendowi. */
+export function parseClientTools(input) {
+  if (!Array.isArray(input)) return [];
+  return [...new Set(input.filter((t) => typeof t === "string" && Object.hasOwn(TOOL_DEFS, t)))];
+}
+
+function isPlainObject(v) {
+  return v !== null && typeof v === "object" && !Array.isArray(v);
+}
+
+/**
+ * Wyniki narzędzi odesłane przez aplikację: {actions:[{id,tool,args}], results:[{id,ok,output}]}.
+ * Zwraca null (brak), {error} (błędne dane) albo {calls, results}.
+ */
+export function parsePending(input, allowedTools) {
+  if (input === undefined || input === null) return null;
+  if (!isPlainObject(input) || !Array.isArray(input.actions) || !Array.isArray(input.results)) {
+    return { error: "Nieprawidłowe wyniki narzędzi" };
+  }
+  const { actions, results } = input;
+  if (actions.length === 0 || actions.length > MAX_ACTIONS || results.length !== actions.length) {
+    return { error: "Nieprawidłowa liczba wyników narzędzi" };
+  }
+  const calls = [];
+  for (const a of actions) {
+    if (!isPlainObject(a) || typeof a.id !== "string" || !TOOL_ID_RE.test(a.id)) return { error: "Nieprawidłowe id narzędzia" };
+    if (!allowedTools.includes(a.tool)) return { error: "Nieznane narzędzie" };
+    if (!isPlainObject(a.args) || JSON.stringify(a.args).length > MAX_TOOL_TEXT) return { error: "Nieprawidłowe parametry narzędzia" };
+    calls.push({ id: a.id, tool: a.tool, args: a.args });
+  }
+  const out = [];
+  for (const c of calls) {
+    const r = results.find((x) => isPlainObject(x) && x.id === c.id);
+    if (!r || typeof r.ok !== "boolean") return { error: "Brak wyniku narzędzia" };
+    const output = typeof r.output === "string" ? r.output.slice(0, MAX_TOOL_TEXT) : "";
+    out.push({ id: c.id, ok: r.ok, output });
+  }
+  return { calls, results: out };
+}
+
+/** Dokleja do rozmowy wywołania narzędzi (asystent) i ich wyniki (użytkownik) w formacie API modelu. */
+export function withToolResults(modelMessages, pending) {
+  if (!pending) return modelMessages;
+  return [
+    ...modelMessages,
+    {
+      role: "assistant",
+      content: pending.calls.map((c) => ({ type: "tool_use", id: c.id, name: c.tool, input: c.args })),
+    },
+    {
+      role: "user",
+      content: pending.results.map((r) => ({
+        type: "tool_result",
+        tool_use_id: r.id,
+        content: r.output || (r.ok ? "Wykonano." : "Nie udało się."),
+        is_error: !r.ok,
+      })),
+    },
+  ];
+}
+
+/** Wywołania narzędzi z odpowiedzi modelu — tylko dozwolone, z parametrami w postaci obiektu. */
+export function extractActions(data, allowedTools) {
+  if (!data || !Array.isArray(data.content)) return [];
+  return data.content
+    .filter((b) => b && b.type === "tool_use" && allowedTools.includes(b.name) && isPlainObject(b.input) && TOOL_ID_RE.test(String(b.id)))
+    .slice(0, MAX_ACTIONS)
+    .map((b) => ({ id: b.id, tool: b.name, args: b.input }));
+}
 
 // Bez nagłówków CORS: aplikacja Android nie jest przeglądarką, a strony WWW nie powinny wołać tego API.
 const JSON_HEADERS = {
@@ -140,14 +250,26 @@ async function handleChat(request, env) {
     return json({ error: "Klucz API modelu zawiera niedozwolone znaki — wklej go ponownie w sekretach" }, 503);
   }
 
+  const declared = Number(request.headers.get("content-length") || 0);
+  if (declared > MAX_BODY_BYTES) return json({ error: "Za duże żądanie (maks. 3 MB)" }, 413);
+  let raw;
+  try {
+    raw = await request.text();
+  } catch {
+    return json({ error: "Nie udało się odczytać żądania" }, 400);
+  }
+  if (new TextEncoder().encode(raw).length > MAX_BODY_BYTES) return json({ error: "Za duże żądanie (maks. 3 MB)" }, 413);
   let body;
   try {
-    body = await request.json();
+    body = JSON.parse(raw);
   } catch {
     return json({ error: "Nieprawidłowy JSON" }, 400);
   }
   const messages = normalizeMessages(body && body.messages);
   if (!messages) return json({ error: "Brak wiadomości od użytkownika" }, 400);
+  const tools = parseClientTools(body.tools);
+  const pending = parsePending(body.pending, tools);
+  if (pending && pending.error) return json({ error: pending.error }, 400);
 
   let upstream;
   try {
@@ -161,8 +283,11 @@ async function handleChat(request, env) {
       body: JSON.stringify({
         model: env.MODEL || DEFAULT_MODEL,
         max_tokens: 600,
-        system: SYSTEM_PROMPT,
-        messages: toModelMessages(messages),
+        system: tools.length ? `${SYSTEM_PROMPT} ${TOOLS_PROMPT}` : SYSTEM_PROMPT,
+        messages: withToolResults(toModelMessages(messages), pending),
+        ...(tools.length
+          ? { tools: tools.map((name) => ({ name, description: TOOL_DEFS[name].description, input_schema: TOOL_DEFS[name].input_schema })) }
+          : {}),
       }),
     });
   } catch (e) {
@@ -184,8 +309,9 @@ async function handleChat(request, env) {
     return json({ error: "Nieprawidłowa odpowiedź modelu AI" }, 502);
   }
   const reply = extractText(data);
-  if (!reply) return json({ error: "Model AI zwrócił pustą odpowiedź" }, 502);
-  return json({ reply });
+  const actions = extractActions(data, tools);
+  if (!reply && !actions.length) return json({ error: "Model AI zwrócił pustą odpowiedź" }, 502);
+  return json(actions.length ? { reply, actions } : { reply });
 }
 
 export default {

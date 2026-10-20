@@ -8,6 +8,7 @@ package pl.zamirski.jarvis.features
 enum class FeatureState(val label: String) {
     ACTIVE("aktywne"),
     PLANNED("planowane"),
+    TESTING("do sprawdzenia na telefonie"),
 }
 
 data class Feature(val id: String, val name: String, val state: FeatureState)
@@ -15,6 +16,7 @@ data class Feature(val id: String, val name: String, val state: FeatureState)
 object FeatureRegistry {
     val all: List<Feature> = listOf(
         Feature("chat", "Rozmowa po polsku (mikrofon + tekst)", FeatureState.ACTIVE),
+        Feature("open_app", "Otwieranie aplikacji i gier poleceniem („otwórz Spotify”)", FeatureState.TESTING),
         Feature("voice_reply", "Odpowiedzi głosowe po polsku", FeatureState.ACTIVE),
         Feature("history", "Historia rozmów (na telefonie)", FeatureState.ACTIVE),
         Feature("hands_free", "Tryb rozmowy bez dotykania ekranu (przy otwartej aplikacji)", FeatureState.ACTIVE),

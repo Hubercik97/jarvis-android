@@ -11,6 +11,7 @@ import pl.zamirski.jarvis.core.ChatProtocol
 import pl.zamirski.jarvis.core.FailureReason
 import pl.zamirski.jarvis.core.HealthResult
 import pl.zamirski.jarvis.core.ProtocolException
+import pl.zamirski.jarvis.core.ToolPending
 import pl.zamirski.jarvis.core.Urls
 import pl.zamirski.jarvis.settings.AppSettings
 import java.io.IOException
@@ -27,14 +28,19 @@ class BackendAiClient(
 
     private data class HttpResponse(val code: Int, val body: String)
 
-    override suspend fun chat(history: List<ChatMessage>): AiResult = withContext(Dispatchers.IO) {
+    override suspend fun chat(
+        history: List<ChatMessage>,
+        tools: List<String>,
+        pending: ToolPending?,
+    ): AiResult = withContext(Dispatchers.IO) {
         val base = Urls.normalizeBackend(settings.backendUrl)
             ?: return@withContext AiResult.Failure(FailureReason.NOT_CONFIGURED)
         if (!NetworkMonitor.isOnline(context)) return@withContext AiResult.Failure(FailureReason.OFFLINE)
         try {
-            val response = request("POST", "$base/chat", ChatProtocol.buildRequest(history, BuildConfig.VERSION_NAME), 60_000)
+            val body = ChatProtocol.buildRequest(history, BuildConfig.VERSION_NAME, tools, pending)
+            val response = request("POST", "$base/chat", body, 60_000)
             when (response.code) {
-                in 200..299 -> AiResult.Success(ChatProtocol.parseReply(response.body))
+                in 200..299 -> ChatProtocol.parseResponse(response.body).let { AiResult.Success(it.text, it.actions) }
                 401, 403 -> AiResult.Failure(FailureReason.UNAUTHORIZED)
                 else -> AiResult.Failure(FailureReason.SERVER, ChatProtocol.parseError(response.body) ?: "HTTP ${response.code}")
             }

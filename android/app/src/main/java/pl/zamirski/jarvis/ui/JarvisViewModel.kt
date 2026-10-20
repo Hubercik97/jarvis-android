@@ -10,9 +10,11 @@ import androidx.compose.runtime.setValue
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 import pl.zamirski.jarvis.core.AiClient
 import pl.zamirski.jarvis.core.AiResult
 import pl.zamirski.jarvis.core.ChatMessage
@@ -22,6 +24,10 @@ import pl.zamirski.jarvis.core.FailureReason
 import pl.zamirski.jarvis.core.HealthResult
 import pl.zamirski.jarvis.core.Kind
 import pl.zamirski.jarvis.core.Messages
+import pl.zamirski.jarvis.core.ToolCall
+import pl.zamirski.jarvis.core.ToolPending
+import pl.zamirski.jarvis.core.ToolRegistry
+import pl.zamirski.jarvis.core.ToolResult
 import pl.zamirski.jarvis.data.CalendarRepository
 import pl.zamirski.jarvis.data.HistoryStore
 import pl.zamirski.jarvis.data.LocalStore
@@ -30,6 +36,7 @@ import pl.zamirski.jarvis.data.WeatherState
 import pl.zamirski.jarvis.net.BackendAiClient
 import pl.zamirski.jarvis.net.NetworkMonitor
 import pl.zamirski.jarvis.settings.AppSettings
+import pl.zamirski.jarvis.tools.LocalToolExecutor
 import pl.zamirski.jarvis.voice.BluetoothAudioRouter
 import pl.zamirski.jarvis.voice.SpeechInput
 import pl.zamirski.jarvis.voice.VoiceOutput
@@ -54,6 +61,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
     private val weatherRepo = WeatherRepository(app, settings)
     private val speech = SpeechInput(app, this)
     private val voice = VoiceOutput(app, this)
+    private val tools = LocalToolExecutor(app)
 
     /** Jeden wątek zapisu — zapisy historii wykonują się po kolei, bez nadpisywania nowszych starszymi. */
     private val io = Executors.newSingleThreadExecutor().asCoroutineDispatcher()
@@ -255,20 +263,19 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
         mode = VoiceMode.THINKING
         liveText = "Myślę…"
         val snapshot = messages.toList()
-        viewModelScope.launch {
-            when (val result = ai.chat(snapshot)) {
-                is AiResult.Success -> {
-                    // Zdjęcie nie jest już potrzebne w pamięci — zostawiamy tylko opis.
-                    val idx = messages.indexOfLast { it.kind == Kind.USER }
-                    if (idx >= 0 && messages[idx].imageBase64 != null) messages[idx] = messages[idx].copy(imageBase64 = null)
-                    messages += ChatMessage(Kind.ASSISTANT, result.text)
-                    persist()
-                    connection = ConnectionState.Ok((connection as? ConnectionState.Ok)?.model ?: "")
-                    if (!speakOrIdle(result.text) && handsFreeActive) {
-                        handsFreeActive = false
-                        liveText = "Tryb rozmowy zakończony — odpowiedzi głosowe są wyłączone lub brak polskiego głosu."
-                    }
-                }
+        viewModelScope.launch { runAiTurn(snapshot) }
+    }
+
+    /**
+     * Jedno polecenie: AI odpowiada tekstem albo proponuje działania z ToolRegistry.
+     * Działania są walidowane i (gdy trzeba) potwierdzane, wykonywane na telefonie,
+     * a ich wyniki wracają do AI, które mówi, co się stało. Maks. ToolRegistry.MAX_ROUNDS rund.
+     */
+    private suspend fun runAiTurn(initial: List<ChatMessage>) {
+        var history = initial
+        var pending: ToolPending? = null
+        repeat(ToolRegistry.MAX_ROUNDS) {
+            when (val result = ai.chat(history, ToolRegistry.names, pending)) {
                 is AiResult.Failure -> {
                     val msg = Messages.forFailure(result.reason, result.detail)
                     messages += ChatMessage(Kind.NOTICE, msg)
@@ -278,9 +285,77 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
                     // W trybie rozmowy użytkownik może nie patrzeć na ekran — mówimy, co się stało.
                     if (handsFreeActive) endHandsFreeAloud(msg)
                     refreshConnection()
+                    return
+                }
+                is AiResult.Success -> {
+                    // Zdjęcie nie jest już potrzebne w pamięci — zostawiamy tylko opis.
+                    val idx = messages.indexOfLast { it.kind == Kind.USER }
+                    if (idx >= 0 && messages[idx].imageBase64 != null) messages[idx] = messages[idx].copy(imageBase64 = null)
+                    connection = ConnectionState.Ok((connection as? ConnectionState.Ok)?.model ?: "")
+                    if (result.actions.isEmpty()) {
+                        finishReply(result.text)
+                        return
+                    }
+                    if (result.text.isNotBlank()) messages += ChatMessage(Kind.ASSISTANT, result.text)
+                    val results = result.actions.map { runAction(it) }
+                    persist()
+                    pending = ToolPending(result.actions, results)
+                    history = messages.toList()
+                    liveText = "Myślę…"
                 }
             }
         }
+        finishReply("Przerwałem: to polecenie wymagało zbyt wielu kroków naraz.")
+    }
+
+    private fun finishReply(text: String) {
+        messages += ChatMessage(Kind.ASSISTANT, text)
+        persist()
+        if (!speakOrIdle(text) && handsFreeActive) {
+            handsFreeActive = false
+            liveText = "Tryb rozmowy zakończony — odpowiedzi głosowe są wyłączone lub brak polskiego głosu."
+        }
+    }
+
+    /** Waliduje, w razie potrzeby pyta o zgodę, wykonuje i zapisuje w rozmowie, co zrobiono. */
+    private suspend fun runAction(call: ToolCall): ToolResult {
+        val description = ToolRegistry.describe(call)
+        if (ToolRegistry.needsConfirmation(call) && !askConfirmation(description)) {
+            messages += ChatMessage(Kind.NOTICE, "✋ $description — anulowano")
+            return ToolResult(call.id, false, "Użytkownik nie potwierdził działania.")
+        }
+        liveText = "Wykonuję: $description"
+        val result = tools.execute(call)
+        messages += ChatMessage(
+            Kind.NOTICE,
+            if (result.ok) "▶ $description — wykonano" else "▶ $description — nie udało się: ${result.output}",
+        )
+        return result
+    }
+
+    // ---------- Potwierdzenia działań ----------
+
+    /** Prośba o potwierdzenie widoczna jako okno dialogowe (null = brak). */
+    var confirmation by mutableStateOf<String?>(null)
+        private set
+
+    private var confirmationAnswer: CompletableDeferred<Boolean>? = null
+
+    private suspend fun askConfirmation(description: String): Boolean {
+        val answer = CompletableDeferred<Boolean>()
+        confirmationAnswer = answer
+        confirmation = description
+        liveText = "Czekam na potwierdzenie…"
+        return try {
+            withTimeoutOrNull(CONFIRM_TIMEOUT_MS) { answer.await() } ?: false
+        } finally {
+            confirmation = null
+            confirmationAnswer = null
+        }
+    }
+
+    fun answerConfirmation(approved: Boolean) {
+        confirmationAnswer?.complete(approved)
     }
 
     /** Wypowiada tekst (jeśli głos jest włączony i dostępny). Zwraca true, gdy mowa ruszyła. */
@@ -405,5 +480,6 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
 
     private companion object {
         const val LISTEN_AGAIN_DELAY_MS = 400L
+        const val CONFIRM_TIMEOUT_MS = 120_000L
     }
 }

@@ -29,6 +29,11 @@
         <intent>
             <action android:name="android.media.action.IMAGE_CAPTURE" />
         </intent>
+        <!-- Otwieranie aplikacji głosem: widoczność aplikacji z ikoną w menu (bez QUERY_ALL_PACKAGES). -->
+        <intent>
+            <action android:name="android.intent.action.MAIN" />
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent>
     </queries>
 
     <application

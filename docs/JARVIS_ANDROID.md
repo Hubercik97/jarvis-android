@@ -29,6 +29,7 @@ dolny pasek z dużym mikrofonem.
 |---|---|
 | Mikrofon → polska mowa → AI → odpowiedź głosem | ✅ (wymaga skonfigurowanego backendu) |
 | Pisanie poleceń tekstem | ✅ |
+| Otwieranie aplikacji i gier („otwórz Spotify”, „uruchom Candy Crush”) | ⚠️ zaimplementowane, **do sprawdzenia na S21** — dopasowanie nazwy na telefonie, lista aplikacji nie trafia do chmury |
 | Historia rozmów | ✅ zapisana na telefonie (maks. 50 rozmów, bez zdjęć); bieżąca rozmowa wraca po ponownym uruchomieniu |
 | Tryb rozmowy (bez dotykania ekranu) | ✅ po odpowiedzi Jarvis sam znowu słucha; koniec: „to wszystko” / „dziękuję”. Tylko przy otwartej aplikacji — ekran nie gaśnie w trakcie |
 | Kamera → zdjęcie → opis przez AI | ✅ (aparat systemowy, zdjęcie usuwane po wysłaniu) |
@@ -83,3 +84,16 @@ Jeśli cache wygaśnie (7 dni bez buildów), Android zgłosi konflikt podpisu: o
 - Klucz API modelu jest wyłącznie w sekretach GitHub/Cloudflare, nigdy w APK.
 - `JARVIS_APP_TOKEN` chroni backend przed obcymi. Bez ustawionego tokenu backend odrzuca wszystkie rozmowy (fail-closed).
 - Do serwera wysyłany jest tylko tekst bieżącej rozmowy (max 20 ostatnich wiadomości). Nic nie jest zapisywane na serwerze.
+
+## Narzędzia (działania na telefonie)
+
+AI nie wykonuje niczego samo. Backend zgłasza modelowi tylko narzędzia, które aplikacja wymieni w polu `tools`,
+model **proponuje** wywołanie (`actions`), a aplikacja:
+1. sprawdza je w `core/ToolRegistry` (nazwa, parametry, typy, długości) — nieznane narzędzie = odrzucone,
+2. dla działań wrażliwych (`ToolRisk.CONFIRM`: wiadomości, połączenia, usuwanie) pokazuje okno „Potwierdź działanie”,
+3. wykonuje je (`tools/LocalToolExecutor`) i zapisuje w rozmowie „▶ … — wykonano / nie udało się”,
+4. odsyła wynik (`pending`), a AI mówi jednym zdaniem, co się stało. Maks. 3 rundy na polecenie.
+
+| Narzędzie | Ryzyko | Uprawnienia | Uwagi |
+|---|---|---|---|
+| `open_app` | bez potwierdzenia | brak (deklaracja `<queries>` dla aplikacji z ikoną) | Do AI wraca tylko wynik i najwyżej 3 podobne nazwy, nigdy lista aplikacji |

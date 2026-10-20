@@ -65,3 +65,29 @@ const bad = await fetch(url + "/chat", {
 });
 if (bad.status !== 401) fail("Test backendu", `Żądanie bez tokenu powinno dać 401, dało ${bad.status}.`);
 notice("Zabezpieczenie", "Żądanie bez tokenu odrzucone (401).");
+
+// Narzędzia: czy prawdziwy model proponuje open_app i czy rozumie wynik (ostrzeżenie zamiast błędu — model bywa niedeterministyczny).
+const ask = await fetch(url + "/chat", {
+  method: "POST",
+  headers: { ...headers, "content-type": "application/json" },
+  body: JSON.stringify({ messages: [{ role: "user", content: "Otwórz Spotify" }], tools: ["open_app"] }),
+});
+const askBody = await ask.json();
+const action = Array.isArray(askBody.actions) ? askBody.actions[0] : null;
+if (!ask.ok || !action || action.tool !== "open_app") {
+  console.log(`::warning title=Narzędzia::Model nie zaproponował open_app (HTTP ${ask.status}): ${askBody.error || askBody.reply || "brak"}`);
+} else {
+  notice("Narzędzia: propozycja AI", `${action.tool} ${JSON.stringify(action.args)}`);
+  const done = await fetch(url + "/chat", {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({
+      messages: [{ role: "user", content: "Otwórz Spotify" }],
+      tools: ["open_app"],
+      pending: { actions: [action], results: [{ id: action.id, ok: true, output: "Otwarto aplikację: Spotify" }] },
+    }),
+  });
+  const doneBody = await done.json();
+  if (!done.ok || !doneBody.reply) fail("Narzędzia", `Odpowiedź po wyniku narzędzia: HTTP ${done.status} ${doneBody.error || ""}`);
+  notice("Narzędzia: odpowiedź po wykonaniu", doneBody.reply.slice(0, 200));
+}

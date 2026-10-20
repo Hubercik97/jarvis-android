@@ -14,15 +14,24 @@ data class BackendHealth(
 
 class ProtocolException(message: String) : Exception(message)
 
+/** Odpowiedź backendu: tekst (może być pusty) i proponowane działania na telefonie. */
+data class AiReply(val text: String, val actions: List<ToolCall>)
+
 /**
  * Format wymiany danych z backendem Jarvisa.
  * Żądanie:  POST /chat  {"messages":[{"role":"user","content":"..."}], "client":{...}}
- * Odpowiedź: {"reply":"..."}  albo  {"error":"..."}
+ * Odpowiedź: {"reply":"...", "actions":[{"id":"...","tool":"open_app","args":{...}}]}  albo  {"error":"..."}
+ * Narzędzia: "tools":["open_app"] — lista dostępnych na telefonie; "pending" — wyniki wykonanych działań.
  */
 object ChatProtocol {
     const val MAX_HISTORY = 20
 
-    fun buildRequest(history: List<ChatMessage>, appVersion: String = ""): String {
+    fun buildRequest(
+        history: List<ChatMessage>,
+        appVersion: String = "",
+        tools: List<String> = emptyList(),
+        pending: ToolPending? = null,
+    ): String {
         val messages = history
             .filter { it.kind != Kind.NOTICE && it.text.isNotBlank() }
             .takeLast(MAX_HISTORY)
@@ -40,10 +49,46 @@ object ChatProtocol {
             }
             array.put(item)
         }
-        return JSONObject()
+        val root = JSONObject()
             .put("messages", array)
             .put("client", JSONObject().put("app", "jarvis-android").put("version", appVersion))
-            .toString()
+        if (tools.isNotEmpty()) root.put("tools", JSONArray(tools))
+        if (pending != null) {
+            val actions = JSONArray()
+            pending.actions.forEach {
+                actions.put(JSONObject().put("id", it.id).put("tool", it.tool).put("args", JSONObject(it.args)))
+            }
+            val results = JSONArray()
+            pending.results.forEach { results.put(JSONObject().put("id", it.id).put("ok", it.ok).put("output", it.output)) }
+            root.put("pending", JSONObject().put("actions", actions).put("results", results))
+        }
+        return root.toString()
+    }
+
+    /** Odpowiedź z tekstem i/lub działaniami. Rzuca ProtocolException, gdy nie ma ani jednego, ani drugiego. */
+    fun parseResponse(body: String): AiReply {
+        val json = try {
+            JSONObject(body)
+        } catch (e: Exception) {
+            throw ProtocolException("Nieprawidłowa odpowiedź serwera")
+        }
+        val text = json.optString("reply", "").trim()
+        val actions = mutableListOf<ToolCall>()
+        val arr = json.optJSONArray("actions")
+        if (arr != null) {
+            for (i in 0 until arr.length()) {
+                val o = arr.optJSONObject(i) ?: continue
+                val id = o.optString("id", "")
+                val tool = o.optString("tool", "")
+                val args = o.optJSONObject("args") ?: continue
+                if (id.isBlank() || tool.isBlank()) continue
+                actions += ToolCall(id, tool, args.keys().asSequence().associateWith { k -> args.opt(k).takeUnless { it == JSONObject.NULL } })
+            }
+        }
+        if (text.isBlank() && actions.isEmpty()) {
+            throw ProtocolException(json.optString("error", "Pusta odpowiedź serwera"))
+        }
+        return AiReply(text, actions)
     }
 
     fun parseReply(body: String): String {

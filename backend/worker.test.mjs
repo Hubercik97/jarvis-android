@@ -1,6 +1,6 @@
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import worker, { normalizeMessages, extractText, toModelMessages, safeEqual, cleanSecret, isHeaderSafe, DEFAULT_MODEL } from "./worker.js";
+import worker, { normalizeMessages, extractText, toModelMessages, safeEqual, cleanSecret, isHeaderSafe, parseClientTools, parsePending, extractActions, MAX_BODY_BYTES, DEFAULT_MODEL } from "./worker.js";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -216,4 +216,100 @@ test("connection failure reports only the error type", async () => {
   assert.equal(res.status, 502);
   assert.equal(body.error, "Nie udało się połączyć z modelem AI (TypeError)");
   assert.ok(!body.error.includes("sk-ant"));
+});
+
+function toolRequest(body, token = "sekret") {
+  return new Request("https://jarvis.test/chat", {
+    method: "POST",
+    headers: { "content-type": "application/json", "x-jarvis-token": token },
+    body: JSON.stringify(body),
+  });
+}
+
+test("old clients without tools get no tools and a plain reply", async () => {
+  let sent;
+  globalThis.fetch = async (url, init) => {
+    sent = JSON.parse(init.body);
+    return new Response(JSON.stringify({ content: [{ type: "text", text: "Cześć" }] }), { status: 200 });
+  };
+  const res = await worker.fetch(chatRequest([{ role: "user", content: "hej" }]), env);
+  assert.deepEqual(await res.json(), { reply: "Cześć" });
+  assert.equal(sent.tools, undefined);
+});
+
+test("client tools are offered to the model and tool_use becomes actions", async () => {
+  let sent;
+  globalThis.fetch = async (url, init) => {
+    sent = JSON.parse(init.body);
+    return new Response(JSON.stringify({
+      stop_reason: "tool_use",
+      content: [
+        { type: "text", text: "Otwieram." },
+        { type: "tool_use", id: "toolu_01", name: "open_app", input: { name: "Spotify" } },
+        { type: "tool_use", id: "toolu_02", name: "rm_rf", input: {} },
+      ],
+    }), { status: 200 });
+  };
+  const res = await worker.fetch(toolRequest({ messages: [{ role: "user", content: "Otwórz Spotify" }], tools: ["open_app", "shell"] }), env);
+  const body = await res.json();
+  assert.equal(res.status, 200);
+  assert.deepEqual(sent.tools.map((t) => t.name), ["open_app"]);
+  assert.match(sent.system, /narzędzia/);
+  assert.deepEqual(body.actions, [{ id: "toolu_01", tool: "open_app", args: { name: "Spotify" } }]);
+  assert.equal(body.reply, "Otwieram.");
+});
+
+test("tool results are sent back as tool_use + tool_result blocks", async () => {
+  let sent;
+  globalThis.fetch = async (url, init) => {
+    sent = JSON.parse(init.body);
+    return new Response(JSON.stringify({ content: [{ type: "text", text: "Otworzyłem Spotify." }] }), { status: 200 });
+  };
+  const res = await worker.fetch(toolRequest({
+    messages: [{ role: "user", content: "Otwórz Spotify" }],
+    tools: ["open_app"],
+    pending: {
+      actions: [{ id: "toolu_01", tool: "open_app", args: { name: "Spotify" } }],
+      results: [{ id: "toolu_01", ok: true, output: "Otwarto: Spotify" }],
+    },
+  }), env);
+  assert.deepEqual(await res.json(), { reply: "Otworzyłem Spotify." });
+  const [, assistant, result] = sent.messages;
+  assert.deepEqual(assistant, { role: "assistant", content: [{ type: "tool_use", id: "toolu_01", name: "open_app", input: { name: "Spotify" } }] });
+  assert.deepEqual(result.content[0], { type: "tool_result", tool_use_id: "toolu_01", content: "Otwarto: Spotify", is_error: false });
+});
+
+test("malformed tool results are rejected with 400", async () => {
+  const cases = [
+    { actions: [{ id: "x", tool: "open_app", args: {} }], results: [] },
+    { actions: [{ id: "bad id!", tool: "open_app", args: {} }], results: [{ id: "bad id!", ok: true }] },
+    { actions: [{ id: "a", tool: "shell", args: {} }], results: [{ id: "a", ok: true }] },
+    { actions: [{ id: "a", tool: "open_app", args: "x" }], results: [{ id: "a", ok: true }] },
+    { actions: [{ id: "a", tool: "open_app", args: {} }], results: [{ id: "b", ok: true }] },
+    "nie obiekt",
+  ];
+  for (const pending of cases) {
+    const res = await worker.fetch(toolRequest({ messages: [{ role: "user", content: "x" }], tools: ["open_app"], pending }), env);
+    assert.equal(res.status, 400, JSON.stringify(pending));
+  }
+});
+
+test("helpers filter tools and actions strictly", () => {
+  assert.deepEqual(parseClientTools(["open_app", "open_app", "shell", 5]), ["open_app"]);
+  assert.deepEqual(parseClientTools("open_app"), []);
+  assert.equal(parsePending(undefined, ["open_app"]), null);
+  assert.deepEqual(extractActions({ content: [{ type: "tool_use", id: "t1", name: "open_app", input: [] }] }, ["open_app"]), []);
+  assert.deepEqual(extractActions({ content: [{ type: "tool_use", id: "t1", name: "open_app", input: { name: "X" } }] }, []), []);
+});
+
+test("oversized requests are refused with 413 before reaching the model", async () => {
+  let called = false;
+  globalThis.fetch = async () => {
+    called = true;
+    return new Response("{}", { status: 200 });
+  };
+  const big = "a".repeat(MAX_BODY_BYTES + 10);
+  const res = await worker.fetch(toolRequest({ messages: [{ role: "user", content: big }] }), env);
+  assert.equal(res.status, 413);
+  assert.equal(called, false);
 });
