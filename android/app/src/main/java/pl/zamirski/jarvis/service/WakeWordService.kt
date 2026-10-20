@@ -7,6 +7,8 @@ import android.app.Service
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ServiceInfo
+import android.media.AudioManager
+import android.media.ToneGenerator
 import android.os.Build
 import android.os.Handler
 import android.os.IBinder
@@ -58,7 +60,6 @@ class WakeWordService : Service(), ContinuousRecognizer.Listener, VoiceOutput.Li
     private var state: State = State.Off
     /** true, gdy trwająca sesja rozpoznawania słucha polecenia (po samym „Jarvis”), a nie słowa. */
     private var commandSession = false
-    private var pendingSpeech: String? = null
 
     override fun onBind(intent: Intent?): IBinder? = null
 
@@ -108,6 +109,7 @@ class WakeWordService : Service(), ContinuousRecognizer.Listener, VoiceOutput.Li
         main.removeCallbacksAndMessages(null)
         recognizer.destroy()
         voice.shutdown()
+        tone?.release()
         scope.cancel()
         state = State.Off
         _running.value = false
@@ -129,9 +131,10 @@ class WakeWordService : Service(), ContinuousRecognizer.Listener, VoiceOutput.Li
             Effect.StartDetector -> startSession(command = false)
             Effect.StopDetector -> if (!commandSession) recognizer.cancel()
             Effect.StartRecognition -> {
-                // „Jarvis” bez polecenia: krótka odpowiedź i słuchamy polecenia.
-                pendingSpeech = null
-                if (!voice.speak("Słucham.")) startSession(command = true) else pendingCommandAfterSpeech = true
+                // „Jarvis” bez polecenia: krótki sygnał (zamiast mówionego „Słucham”, które zagłuszało początek polecenia)
+                // i od razu słuchamy polecenia.
+                beep()
+                startSession(command = true)
             }
             Effect.CancelRecognition -> {
                 commandSession = false
@@ -156,6 +159,16 @@ class WakeWordService : Service(), ContinuousRecognizer.Listener, VoiceOutput.Li
     }
 
     private var pendingCommandAfterSpeech = false
+    private var tone: ToneGenerator? = null
+
+    private fun beep() {
+        try {
+            val t = tone ?: ToneGenerator(AudioManager.STREAM_MUSIC, 70).also { tone = it }
+            t.startTone(ToneGenerator.TONE_PROP_BEEP, 150)
+        } catch (e: RuntimeException) {
+            // Brak generatora dźwięku na urządzeniu — działamy dalej bez sygnału.
+        }
+    }
 
     private fun startSession(command: Boolean) {
         if (!guard.allow(SystemClock.elapsedRealtime())) {
@@ -168,18 +181,35 @@ class WakeWordService : Service(), ContinuousRecognizer.Listener, VoiceOutput.Li
 
     // ---------- Rozpoznawanie mowy ----------
 
-    override fun onText(text: String) {
+    /** „Jarvis” usłyszane już w wyniku cząstkowym — nawet jeśli wynik końcowy zapisze je inaczej. */
+    private var wakeSeenInPartial = false
+
+    override fun onPartial(text: String) {
+        if (state == State.Listening && !commandSession && WakeWord.match(text) != null) wakeSeenInPartial = true
+    }
+
+    override fun onText(alternatives: List<String>) {
         val wasCommand = commandSession
         commandSession = false
+        val seen = wakeSeenInPartial
+        wakeSeenInPartial = false
+        _lastHeard.value = alternatives.firstOrNull()
         when {
-            state == State.Command && wasCommand -> dispatch(Event.CommandHeard(text))
+            state == State.Command && wasCommand -> dispatch(Event.CommandHeard(alternatives.firstOrNull().orEmpty()))
             state == State.Listening -> {
-                val rest = WakeWord.match(text)
-                if (rest == null) {
-                    restartListeningSoon()
-                } else {
-                    guard.reset()
-                    dispatch(Event.WakeWithCommand(rest))
+                // Sprawdzamy wszystkie warianty rozpoznania, nie tylko najlepszy.
+                val hit = alternatives.firstNotNullOfOrNull { alt -> WakeWord.match(alt)?.let { alt to it } }
+                when {
+                    hit != null -> {
+                        guard.reset()
+                        _lastHeard.value = hit.first
+                        dispatch(Event.WakeWithCommand(hit.second))
+                    }
+                    seen -> {
+                        guard.reset()
+                        dispatch(Event.WakeWithCommand(""))
+                    }
+                    else -> restartListeningSoon()
                 }
             }
         }
@@ -188,6 +218,13 @@ class WakeWordService : Service(), ContinuousRecognizer.Listener, VoiceOutput.Li
     override fun onRecognitionError(code: Int) {
         val wasCommand = commandSession
         commandSession = false
+        if (state == State.Listening && wakeSeenInPartial) {
+            // „Jarvis” padło, ale sesja skończyła się bez wyniku końcowego — i tak słuchamy polecenia.
+            wakeSeenInPartial = false
+            dispatch(Event.WakeWithCommand(""))
+            return
+        }
+        wakeSeenInPartial = false
         val kind = WakeWord.classify(code)
         if (state == State.Command && wasCommand) {
             dispatch(Event.CommandFailed(silence = kind == WakeWord.ErrorKind.RESTART))
@@ -267,10 +304,14 @@ class WakeWordService : Service(), ContinuousRecognizer.Listener, VoiceOutput.Li
         const val CHANNEL_ID = "jarvis_listening"
         private const val NOTIFICATION_ID = 4201
         private const val ACTION_STOP = "pl.zamirski.jarvis.STOP_LISTENING"
-        private const val RESTART_DELAY_MS = 250L
+        private const val RESTART_DELAY_MS = 80L
 
         private val _running = MutableStateFlow(false)
         val running: StateFlow<Boolean> = _running
+
+        private val _lastHeard = MutableStateFlow<String?>(null)
+        /** Diagnostyka: ostatnio rozpoznany tekst (tylko w pamięci, widoczny w Ustawieniach, nigdzie nie wysyłany). */
+        val lastHeard: StateFlow<String?> = _lastHeard
 
         private val _status = MutableStateFlow<String?>(null)
         /** Ostatni komunikat usługi do pokazania w Ustawieniach (np. dlaczego się wyłączyła). */

@@ -295,6 +295,13 @@ private fun BackgroundListeningCard(vm: JarvisViewModel, actions: AppActions) {
             if (running) JColors.Success else JColors.TextDim,
         )
         status?.let { InfoText(it, JColors.Warning) }
+        val heard by WakeWordService.lastHeard.collectAsState()
+        if (running) {
+            InfoText(
+                "Ostatnio usłyszane: " + (heard?.let { "„$it”" } ?: "Brak danych") +
+                    " — jeśli „Jarvis” zapisuje się tu inaczej, podaj mi ten zapis.",
+            )
+        }
         Spacer(Modifier.height(8.dp))
         InfoText(
             "Powiedz „Jarvis” i polecenie, np. „Jarvis, przełącz na kalendarz”, będąc w dowolnej aplikacji. " +

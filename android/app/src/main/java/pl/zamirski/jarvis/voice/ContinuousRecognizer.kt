@@ -17,7 +17,9 @@ import android.speech.SpeechRecognizer
 class ContinuousRecognizer(private val context: Context, private val listener: Listener) {
 
     interface Listener {
-        fun onText(text: String)
+        /** Wszystkie warianty rozpoznania (najlepszy pierwszy). */
+        fun onText(alternatives: List<String>)
+        fun onPartial(text: String) {}
         fun onRecognitionError(code: Int)
         fun onSessionReady() {}
     }
@@ -45,7 +47,12 @@ class ContinuousRecognizer(private val context: Context, private val listener: L
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE, SpeechInput.LANGUAGE)
             putExtra(RecognizerIntent.EXTRA_LANGUAGE_PREFERENCE, SpeechInput.LANGUAGE)
-            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 1)
+            putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 5)
+            putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+            // Podpowiedź dla rozpoznawania (Android 13+), że „Jarvis” to oczekiwane słowo.
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+                putExtra(RecognizerIntent.EXTRA_BIASING_STRINGS, arrayListOf("Jarvis", "Dżarwis", "hej Jarvis"))
+            }
             putExtra(RecognizerIntent.EXTRA_CALLING_PACKAGE, context.packageName)
             if (onDevice) putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
         }
@@ -80,10 +87,13 @@ class ContinuousRecognizer(private val context: Context, private val listener: L
         override fun onEndOfSpeech() {}
         override fun onError(error: Int) = listener.onRecognitionError(error)
         override fun onResults(results: Bundle?) {
-            val text = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
-            listener.onText(text)
+            val all = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION).orEmpty().map { it.trim() }.filter { it.isNotEmpty() }
+            listener.onText(all)
         }
-        override fun onPartialResults(partialResults: Bundle?) {}
+        override fun onPartialResults(partialResults: Bundle?) {
+            val text = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()?.trim().orEmpty()
+            if (text.isNotEmpty()) listener.onPartial(text)
+        }
         override fun onEvent(eventType: Int, params: Bundle?) {}
     }
 }

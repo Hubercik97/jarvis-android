@@ -7,13 +7,19 @@ package pl.zamirski.jarvis.core
  */
 object WakeWord {
 
-    /** Warianty po normalizacji (małe litery, bez polskich znaków). */
-    private val VARIANTS = listOf(
-        "jarvis", "jarvisie", "jarvisa", "jarwis", "jarwisie", "jarwisa",
+    /** Warianty po normalizacji (małe litery, bez polskich znaków) — dopasowanie dokładne. */
+    private val VARIANTS = setOf(
+        "jarvis", "jarvisie", "jarvisa", "jarwis", "jarwisie", "jarwisa", "jarvi", "jervis", "jarvies",
         "dzarwis", "dzarvis", "dzarwisie", "dzarvisie", "dzarwisa", "dzarwiz", "dzerwis", "dzervis",
-        "dzarwi", "jervis", "dzarvi", "darwis",
+        "dzarwi", "dzarvi", "darwis", "czarwis", "dzaris", "dzarwic",
     )
-    private val WAKE = Regex("(?:^| )(?:hej |hey |ej |halo )?(${VARIANTS.joinToString("|")})(?= |$)")
+
+    /** Rdzenie do dopasowania przybliżonego (literówki rozpoznawania mowy). */
+    private val CORES = listOf("jarvis", "dzarwis", "dzarvis")
+    private const val FUZZY = 0.75
+
+    /** Słowa, które brzmią podobnie, ale nigdy nie są wołaniem Jarvisa. */
+    private val NEVER = setOf("darwin", "darwina", "jarmark", "garwolin", "czerwiec", "carvis")
 
     /**
      * null — brak słowa „Jarvis”;
@@ -21,13 +27,27 @@ object WakeWord {
      * tekst — polecenie wypowiedziane od razu po słowie („Jarvis, przełącz na kalendarz”).
      */
     fun match(transcript: String): String? {
-        val norm = ConversationFlow.normalize(transcript)
-        val m = WAKE.find(norm) ?: return null
-        // Polecenie bierzemy z oryginalnego tekstu (z polskimi znakami): liczymy słowa do końca słowa „Jarvis”.
-        val wordsBefore = norm.substring(0, m.range.last + 1).trim().split(' ').size
-        val original = transcript.trim().split(Regex("\\s+"))
-        return original.drop(wordsBefore).joinToString(" ").trim().trimStart(',', '.', ':', ';', '!', '?', '-', ' ')
+        val words = transcript.trim().split(Regex("\\s+")).filter { it.isNotEmpty() }
+        // Każde słowo oryginału → postać znormalizowana bez spacji (zachowuje indeksy słów).
+        val norm = words.map { ConversationFlow.normalize(it).replace(" ", "") }
+        for (i in norm.indices) {
+            val one = norm[i]
+            if (isWake(one)) return rest(words, i + 1)
+            // „Jar wis”, „dżar wis” — rozpoznawanie czasem dzieli imię na dwa słowa.
+            if (i + 1 < norm.size && one.length in 2..4 && isWake(one + norm[i + 1])) return rest(words, i + 2)
+        }
+        return null
     }
+
+    fun isWake(word: String): Boolean {
+        if (word.isEmpty() || word in NEVER) return false
+        if (word in VARIANTS) return true
+        if (word.length !in 5..9) return false
+        return CORES.any { AppMatcher.similarity(word, it) >= FUZZY }
+    }
+
+    private fun rest(words: List<String>, from: Int): String =
+        words.drop(from).joinToString(" ").trim().trimStart(',', '.', ':', ';', '!', '?', '-', ' ')
 
     /** Jak traktować kod błędu android.speech.SpeechRecognizer podczas ciągłego nasłuchu. */
     enum class ErrorKind {

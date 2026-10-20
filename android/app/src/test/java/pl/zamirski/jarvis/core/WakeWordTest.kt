@@ -27,10 +27,22 @@ class WakeWordTest {
     }
 
     @Test
+    fun `speech recognition spellings and split words still wake jarvis`() {
+        assertEquals("", WakeWord.match("Dżarvis"))
+        assertEquals("", WakeWord.match("Dżerwis"))
+        assertEquals("", WakeWord.match("Jarwis!"))
+        assertEquals("otwórz Spotify", WakeWord.match("Jar wis otwórz Spotify"))
+        assertEquals("która godzina", WakeWord.match("Dżar wis, która godzina"))
+        assertEquals("włącz latarkę", WakeWord.match("Jarvisie włącz latarkę"))
+        assertEquals("przełącz na kalendarz", WakeWord.match("Jarvis,przełącz na kalendarz".replace(",", ", ")))
+    }
+
+    @Test
     fun `ordinary speech does not wake jarvis`() {
         listOf(
             "Jarosław wraca jutro", "Na jarmarku było tłoczno", "Darwin napisał książkę",
-            "zadzwoń do mamy", "", "jarvisowy", "Garaż jest otwarty",
+            "zadzwoń do mamy", "", "jarvisowy", "Garaż jest otwarty", "W czerwcu jedziemy do Garwolina",
+            "Karol jest w pracy", "jar z miodem", "zadzwoń do Jarka", "jaś wie", "Darwina",
         ).forEach { assertNull("nie powinno wybudzić: $it", WakeWord.match(it)) }
     }
 
