@@ -1,0 +1,56 @@
+name: Jarvis — ocena wake word
+
+# Pomiar: czy model openWakeWord "hey_jarvis" reaguje na polską wymowę „Jarvis”.
+# Mowa syntetyczna (Piper) — wynik orientacyjny, nie zastępuje testu na prawdziwym głosie.
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - "tools/wakeword-eval/**"
+      - ".github/workflows/wakeword-eval.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  eval:
+    name: Ocena hey_jarvis (PL/EN)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Zależności
+        run: |
+          pip install --quiet "openwakeword==0.6.0" onnxruntime scipy "piper-tts==1.2.0"
+
+      - name: Głosy Piper
+        run: |
+          mkdir -p voices && cd voices
+          base=https://huggingface.co/rhasspy/piper-voices/resolve/v1.0.0
+          for v in pl/pl_PL/gosia/medium/pl_PL-gosia-medium \
+                   pl/pl_PL/darkman/medium/pl_PL-darkman-medium \
+                   pl/pl_PL/mc_speech/medium/pl_PL-mc_speech-medium \
+                   en/en_US/lessac/medium/en_US-lessac-medium \
+                   en/en_US/ryan/medium/en_US-ryan-medium; do
+            curl -sSfL -o "$(basename $v).onnx" "$base/$v.onnx"
+            curl -sSfL -o "$(basename $v).onnx.json" "$base/$v.onnx.json"
+          done
+          ls -la
+
+      - name: Pomiar
+        run: |
+          mkdir -p out
+          python tools/wakeword-eval/eval.py voices out | tee out/log.txt
+          cat out/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: ocena-wake-word-${{ github.run_number }}
+          path: out/
+          retention-days: 30
