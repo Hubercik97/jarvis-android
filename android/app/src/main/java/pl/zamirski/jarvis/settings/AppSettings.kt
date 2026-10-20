@@ -27,6 +27,11 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean(KEY_HANDS_FREE, false)
         set(value) = prefs.edit().putBoolean(KEY_HANDS_FREE, value).apply()
 
+    /** Mikrofon słuchawek Bluetooth podczas słuchania polecenia (gdy słuchawki są podłączone). */
+    var bluetoothMic: Boolean
+        get() = prefs.getBoolean(KEY_BT_MIC, true)
+        set(value) = prefs.edit().putBoolean(KEY_BT_MIC, value).apply()
+
     /** Miasto dla pogody; puste = przybliżona lokalizacja telefonu. */
     var weatherCity: String
         get() = prefs.getString(KEY_CITY, "") ?: ""
@@ -38,5 +43,6 @@ class AppSettings(context: Context) {
         const val KEY_TOKEN = "app_token"
         const val KEY_VOICE = "voice_replies"
         const val KEY_HANDS_FREE = "hands_free"
+        const val KEY_BT_MIC = "bluetooth_mic"
     }
 }

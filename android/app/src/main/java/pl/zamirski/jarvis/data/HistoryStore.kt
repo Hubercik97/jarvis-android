@@ -16,7 +16,7 @@ import java.io.File
  * Zapisy są atomowe (AtomicFile), więc przerwanie w połowie nie psuje pliku.
  * Wywoływać z wątku tła; metody są synchronizowane.
  */
-class HistoryStore(context: Context) {
+class HistoryStore private constructor(context: Context) {
     private val dir = File(context.applicationContext.filesDir, "history").apply { mkdirs() }
     private val currentFile = AtomicFile(File(dir, "current.json"))
     private val archiveFile = AtomicFile(File(dir, "archive.json"))
@@ -59,6 +59,14 @@ class HistoryStore(context: Context) {
     fun deleteAll() {
         archiveFile.delete()
         _archive.value = emptyList()
+    }
+
+    companion object {
+        @Volatile private var instance: HistoryStore? = null
+
+        /** Jeden egzemplarz na proces — ekran i (w przyszłości) usługa w tle piszą przez ten sam obiekt. */
+        fun get(context: Context): HistoryStore =
+            instance ?: synchronized(this) { instance ?: HistoryStore(context).also { instance = it } }
     }
 
     private fun read(file: AtomicFile): String? = try {

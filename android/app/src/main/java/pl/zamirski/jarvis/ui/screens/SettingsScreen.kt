@@ -33,6 +33,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import pl.zamirski.jarvis.BuildConfig
+import pl.zamirski.jarvis.core.BluetoothRoutePolicy
 import pl.zamirski.jarvis.core.Urls
 import pl.zamirski.jarvis.features.FeatureRegistry
 import pl.zamirski.jarvis.net.NetworkMonitor
@@ -54,6 +55,7 @@ fun SettingsScreen(vm: JarvisViewModel, actions: AppActions, onBack: () -> Unit)
     var city by remember { mutableStateOf(vm.settings.weatherCity) }
     var voiceReplies by remember { mutableStateOf(vm.settings.voiceReplies) }
     var handsFree by remember { mutableStateOf(vm.settings.handsFree) }
+    var bluetoothMic by remember { mutableStateOf(vm.settings.bluetoothMic) }
     var urlError by remember { mutableStateOf<String?>(null) }
     var refreshTick by remember { mutableStateOf(0) }
 
@@ -149,6 +151,21 @@ fun SettingsScreen(vm: JarvisViewModel, actions: AppActions, onBack: () -> Unit)
                     "Po odpowiedzi głosowej Jarvis sam znowu słucha — możesz rozmawiać bez dotykania ekranu. " +
                         "Zakończ, mówiąc „to wszystko” albo „dziękuję”. Działa tylko przy otwartej aplikacji: " +
                         "ekran nie gaśnie w trakcie rozmowy, a po przejściu do innej aplikacji nasłuch się zatrzymuje.",
+                )
+                Spacer(Modifier.height(8.dp))
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text("Mikrofon słuchawek Bluetooth", color = JColors.Text, fontSize = 16.sp, modifier = Modifier.weight(1f))
+                    Switch(checked = bluetoothMic, onCheckedChange = {
+                        bluetoothMic = it
+                        vm.settings.bluetoothMic = it
+                        refreshTick++
+                    })
+                }
+                // Odczyt refreshTick odświeża stan słuchawek po przełączeniu lub „Sprawdź ponownie”.
+                if (refreshTick >= 0) InfoText(
+                    BluetoothRoutePolicy.describe(bluetoothMic, vm.bluetooth.headset() != null, vm.bluetooth.headsetName()) +
+                        ". Głos Jarvisa gra tam, gdzie multimedia — w podłączonych słuchawkach. " +
+                        "Czy usługa rozpoznawania mowy Google używa mikrofonu słuchawek, zależy od telefonu — sprawdź na S21.",
                 )
             }
 

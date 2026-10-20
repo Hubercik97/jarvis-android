@@ -41,7 +41,8 @@ dolny pasek z dużym mikrofonem.
 | Inteligentny dom | ❌ niepodłączone — ekran mówi to wprost, bez fałszywych przełączników |
 | Komputer / panel Windows | ❌ planowane — architektura: `sync/SyncRepository` + backend |
 | Pamięć AI między rozmowami, okulary | ❌ planowane |
-| Słowo „Jarvis” w tle / przy zgaszonym ekranie, słuchawki Bluetooth | ❌ planowane — wymaga testów na Galaxy S21, nie jest jeszcze zaimplementowane |
+| Słuchawki Bluetooth (mikrofon na czas słuchania, głos Jarvisa w słuchawkach) | ⚠️ zaimplementowane, **niesprawdzone na S21** — zob. [WAKE_WORD.md](WAKE_WORD.md) |
+| Słowo „Jarvis” w tle / przy zgaszonym ekranie | ❌ niewdrożone — gotowe detektory nie rozpoznają polskiego „Jarvis” (pomiar w [WAKE_WORD.md](WAKE_WORD.md)); czeka na wybór alternatywy |
 
 Aplikacja nie zapisuje nagrań głosu.
 

@@ -30,6 +30,7 @@ import pl.zamirski.jarvis.data.WeatherState
 import pl.zamirski.jarvis.net.BackendAiClient
 import pl.zamirski.jarvis.net.NetworkMonitor
 import pl.zamirski.jarvis.settings.AppSettings
+import pl.zamirski.jarvis.voice.BluetoothAudioRouter
 import pl.zamirski.jarvis.voice.SpeechInput
 import pl.zamirski.jarvis.voice.VoiceOutput
 import java.util.concurrent.Executors
@@ -47,7 +48,8 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
     val settings = AppSettings(app)
     val store = LocalStore.get(app)
     val calendar = CalendarRepository(app)
-    val history = HistoryStore(app)
+    val history = HistoryStore.get(app)
+    val bluetooth = BluetoothAudioRouter(app)
     private val ai: AiClient = BackendAiClient(app, settings)
     private val weatherRepo = WeatherRepository(app, settings)
     private val speech = SpeechInput(app, this)
@@ -118,6 +120,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
             speech.cancel()
             setIdle()
         }
+        releaseMic()
         if (handsFreeActive) {
             handsFreeActive = false
             liveText = "Tryb rozmowy zatrzymany — aplikacja przeszła w tło."
@@ -144,15 +147,27 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
         if (userInitiated && settings.handsFree) handsFreeActive = true
         voice.stop()
         mode = VoiceMode.LISTENING
-        liveText = "Uruchamiam mikrofon…"
-        speech.start()
+        // Słuchawki Bluetooth: łącze mikrofonu tylko na czas słuchania (zwalniane przed odpowiedzią głosową).
+        if (bluetooth.startMicRoute(settings.bluetoothMic)) {
+            liveText = "Uruchamiam mikrofon słuchawek…"
+            viewModelScope.launch {
+                delay(BluetoothAudioRouter.ROUTE_SETTLE_MS)
+                if (mode == VoiceMode.LISTENING) speech.start() else releaseMic()
+            }
+        } else {
+            liveText = "Uruchamiam mikrofon…"
+            speech.start()
+        }
     }
 
     fun stopListening() = speech.stop()
 
+    private fun releaseMic() = bluetooth.stopMicRoute()
+
     fun cancelVoice() {
         handsFreeActive = false
         if (mode == VoiceMode.LISTENING) speech.cancel()
+        releaseMic()
         if (mode == VoiceMode.SPEAKING) voice.stop()
         if (mode != VoiceMode.THINKING) setIdle()
     }
@@ -181,6 +196,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
 
     override fun onFinalText(text: String) {
         if (mode != VoiceMode.LISTENING) return
+        releaseMic()
         setIdle()
         if (text.isBlank()) {
             liveText = Messages.forSpeechError(7)
@@ -192,6 +208,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
 
     override fun onSpeechError(code: Int) {
         if (mode != VoiceMode.LISTENING) return
+        releaseMic()
         setIdle()
         val message = Messages.forSpeechError(code)
         liveText = message
@@ -219,6 +236,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
             return
         }
         if (mode == VoiceMode.LISTENING) speech.cancel()
+        releaseMic()
         voice.stop()
         // Pisanie oznacza, że użytkownik patrzy na ekran — tryb rozmowy się kończy.
         if (!fromVoice) handsFreeActive = false
@@ -378,6 +396,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
     }
 
     override fun onCleared() {
+        releaseMic()
         speech.destroy()
         voice.shutdown()
         io.close()

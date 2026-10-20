@@ -3,6 +3,8 @@
 
     <!-- Mikrofon telefonu — prośba o zgodę dopiero po naciśnięciu przycisku mikrofonu. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- Przełączanie mikrofonu na słuchawki Bluetooth na czas słuchania polecenia (uprawnienie zwykłe, bez pytania). -->
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.INTERNET" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <!-- Pogoda dla Twojej okolicy (przybliżona lokalizacja, opcjonalnie). -->

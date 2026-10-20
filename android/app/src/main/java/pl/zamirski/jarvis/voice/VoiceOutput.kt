@@ -1,6 +1,7 @@
 package pl.zamirski.jarvis.voice
 
 import android.content.Context
+import android.media.AudioAttributes
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
@@ -34,6 +35,14 @@ class VoiceOutput(context: Context, private val listener: Listener) : TextToSpee
         } else {
             Status.FAILED
         }
+        // Głos asystenta: system kieruje go tam, gdzie multimedia — do podłączonych słuchawek Bluetooth (A2DP)
+        // albo na głośnik telefonu.
+        tts.setAudioAttributes(
+            AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                .build(),
+        )
         tts.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
             override fun onStart(utteranceId: String?) {
                 main.post { listener.onSpeakingStarted() }
