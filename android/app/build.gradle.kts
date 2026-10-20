@@ -8,7 +8,7 @@ plugins {
 // Przyjmujemy wyłącznie adres https:// bez spacji i cudzysłowów; cokolwiek innego = brak adresu
 // (aplikacja pokaże wtedy „Brak adresu backendu AI” zamiast łączyć się z niepewnym serwerem).
 val defaultBackendUrl: String =
-    (System.getenv("JARVIS_BACKEND_URL") ?: (project.findProperty("jarvisBackendUrl") as String?) ?: "")
+    (System.getenv("JARVIS_BACKEND_URL")?.takeIf { it.isNotBlank() } ?: (project.findProperty("jarvisBackendUrl") as String?) ?: "")
         .trim()
         .trimEnd('/')
         .takeIf { Regex("^https://[A-Za-z0-9.-]+(:[0-9]+)?(/[A-Za-z0-9._~/-]*)?$").matches(it) }

@@ -11,7 +11,8 @@ class AppSettings(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("jarvis_settings", Context.MODE_PRIVATE)
 
     var backendUrl: String
-        get() = prefs.getString(KEY_URL, null) ?: BuildConfig.DEFAULT_BACKEND_URL
+        // Puste pole = adres wbudowany w aplikację (nie da się „zgubić” adresu, czyszcząc pole).
+        get() = prefs.getString(KEY_URL, null)?.takeIf { it.isNotBlank() } ?: BuildConfig.DEFAULT_BACKEND_URL
         set(value) = prefs.edit().putString(KEY_URL, value.trim()).apply()
 
     var appToken: String
