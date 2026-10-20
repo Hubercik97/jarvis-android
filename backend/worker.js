@@ -35,6 +35,19 @@ function json(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: JSON_HEADERS });
 }
 
+/**
+ * Czyści sekret wklejony z telefonu: usuwa białe i niewidoczne znaki z początku i końca
+ * (spacje, nowe linie, twardą spację, znaki zerowej szerokości, BOM).
+ */
+export function cleanSecret(value) {
+  return String(value ?? "").replace(/^[\s\u00a0\u200b-\u200d\u2060\ufeff]+|[\s\u00a0\u200b-\u200d\u2060\ufeff]+$/g, "");
+}
+
+/** Klucz nadaje się do nagłówka HTTP tylko z widocznymi znakami ASCII. */
+export function isHeaderSafe(value) {
+  return /^[\x21-\x7e]+$/.test(value);
+}
+
 /** Porównanie w stałym czasie (nie zdradza, ile znaków tokenu się zgadza). */
 export function safeEqual(a, b) {
   const enc = new TextEncoder();
@@ -52,10 +65,11 @@ export function safeEqual(a, b) {
  * "missing" — serwer nie ma ustawionego APP_TOKEN (wtedy /chat zawsze odmawia).
  */
 export function authState(request, env) {
-  if (!env.APP_TOKEN) return "missing";
-  const given = request.headers.get("x-jarvis-token");
+  const expected = cleanSecret(env.APP_TOKEN);
+  if (!expected) return "missing";
+  const given = cleanSecret(request.headers.get("x-jarvis-token"));
   if (!given) return "invalid";
-  return safeEqual(given, env.APP_TOKEN) ? "ok" : "invalid";
+  return safeEqual(given, expected) ? "ok" : "invalid";
 }
 
 /**
@@ -120,7 +134,11 @@ async function handleChat(request, env) {
   const auth = authState(request, env);
   if (auth === "missing") return json({ error: "Serwer nie ma skonfigurowanego tokenu aplikacji" }, 503);
   if (auth !== "ok") return json({ error: "Nieprawidłowy token aplikacji" }, 401);
-  if (!env.ANTHROPIC_API_KEY) return json({ error: "Serwer nie ma skonfigurowanego klucza API modelu" }, 503);
+  const apiKey = cleanSecret(env.ANTHROPIC_API_KEY);
+  if (!apiKey) return json({ error: "Serwer nie ma skonfigurowanego klucza API modelu" }, 503);
+  if (!isHeaderSafe(apiKey)) {
+    return json({ error: "Klucz API modelu zawiera niedozwolone znaki — wklej go ponownie w sekretach" }, 503);
+  }
 
   let body;
   try {
@@ -137,7 +155,7 @@ async function handleChat(request, env) {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        "x-api-key": env.ANTHROPIC_API_KEY,
+        "x-api-key": apiKey,
         "anthropic-version": "2023-06-01",
       },
       body: JSON.stringify({
@@ -147,8 +165,10 @@ async function handleChat(request, env) {
         messages: toModelMessages(messages),
       }),
     });
-  } catch {
-    return json({ error: "Nie udało się połączyć z modelem AI" }, 502);
+  } catch (e) {
+    // Tylko typ błędu (np. TypeError) — bez treści, która mogłaby zawierać fragment klucza.
+    const kind = e && typeof e.name === "string" ? e.name.replace(/[^A-Za-z]/g, "").slice(0, 40) : "";
+    return json({ error: `Nie udało się połączyć z modelem AI${kind ? ` (${kind})` : ""}` }, 502);
   }
 
   if (!upstream.ok) {
@@ -176,7 +196,8 @@ export default {
     if (url.pathname === "/health" && request.method === "GET") {
       return json({
         ok: true,
-        configured: Boolean(env.ANTHROPIC_API_KEY),
+        configured: Boolean(cleanSecret(env.ANTHROPIC_API_KEY)),
+        key_format_ok: isHeaderSafe(cleanSecret(env.ANTHROPIC_API_KEY)),
         model: env.MODEL || DEFAULT_MODEL,
         auth: authState(request, env),
       });

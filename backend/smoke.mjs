@@ -3,7 +3,7 @@
 // Wynik trafia do adnotacji workflowu (::notice / ::error).
 
 const url = (process.env.BACKEND_URL || "").replace(/\/+$/, "");
-const token = process.env.APP_TOKEN || "";
+const token = (process.env.APP_TOKEN || "").trim();
 
 function notice(title, msg) {
   console.log(`::notice title=${title}::${msg.replace(/\r?\n/g, " ")}`);
@@ -34,9 +34,14 @@ async function call(path, init, attempts = 6) {
 
 const headers = { "x-jarvis-token": token };
 
-const h = await call("/health", { headers });
-const health = await h.json();
-notice("Backend /health", `ok=${health.ok} klucz_modelu=${health.configured} model=${health.model} token=${health.auth}`);
+let health;
+for (let i = 0; i < 6; i++) {
+  const h = await call("/health", { headers });
+  health = await h.json();
+  if (health.auth !== "missing") break;
+  await new Promise((r) => setTimeout(r, 5000)); // świeżo ustawiony sekret potrzebuje chwili
+}
+notice("Backend /health", `ok=${health.ok} klucz_modelu=${health.configured} format_klucza=${health.key_format_ok} model=${health.model} token=${health.auth}`);
 if (!health.configured) fail("Test backendu", "Serwer nie ma klucza ANTHROPIC_API_KEY.");
 if (health.auth !== "ok") fail("Test backendu", `Token aplikacji nie działa (stan: ${health.auth}).`);
 

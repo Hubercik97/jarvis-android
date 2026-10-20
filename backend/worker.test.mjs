@@ -1,6 +1,6 @@
 import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
-import worker, { normalizeMessages, extractText, toModelMessages, safeEqual, DEFAULT_MODEL } from "./worker.js";
+import worker, { normalizeMessages, extractText, toModelMessages, safeEqual, cleanSecret, isHeaderSafe, DEFAULT_MODEL } from "./worker.js";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
@@ -21,7 +21,7 @@ test("health reports configuration without exposing the key", async () => {
   const res = await worker.fetch(new Request("https://jarvis.test/health", { headers: { "x-jarvis-token": "zly" } }), env);
   const body = await res.json();
   assert.equal(res.status, 200);
-  assert.deepEqual(body, { ok: true, configured: true, model: DEFAULT_MODEL, auth: "invalid" });
+  assert.deepEqual(body, { ok: true, configured: true, key_format_ok: true, model: DEFAULT_MODEL, auth: "invalid" });
   assert.ok(!JSON.stringify(body).includes("test-key"));
 });
 
@@ -173,4 +173,47 @@ test("invalid or non-user images are dropped", () => {
   ]);
   assert.ok(out.every((m) => !m.image));
   assert.deepEqual(toModelMessages([{ role: "user", content: "x" }]), [{ role: "user", content: "x" }]);
+});
+
+test("secrets pasted with invisible characters are cleaned", async () => {
+  assert.equal(cleanSecret("  sk-ant-abc\n"), "sk-ant-abc");
+  assert.equal(cleanSecret("\u00a0\u200bsk-ant-abc\ufeff\u00a0"), "sk-ant-abc");
+  assert.equal(isHeaderSafe("sk-ant-abc"), true);
+  assert.equal(isHeaderSafe("sk-ant-ąbc"), false);
+  assert.equal(isHeaderSafe("sk ant"), false);
+
+  let sentKey;
+  globalThis.fetch = async (url, init) => {
+    sentKey = init.headers["x-api-key"];
+    return new Response(JSON.stringify({ content: [{ type: "text", text: "OK" }] }), { status: 200 });
+  };
+  const messyEnv = { ANTHROPIC_API_KEY: "\u00a0test-key\n", APP_TOKEN: "sekret\u200b " };
+  const res = await worker.fetch(chatRequest([{ role: "user", content: "hej" }]), messyEnv);
+  assert.equal(res.status, 200);
+  assert.equal(sentKey, "test-key");
+});
+
+test("key with characters invalid in a header gives a clear error, not a crash", async () => {
+  let called = false;
+  globalThis.fetch = async () => {
+    called = true;
+    return new Response("{}", { status: 200 });
+  };
+  const res = await worker.fetch(chatRequest([{ role: "user", content: "hej" }]), { ANTHROPIC_API_KEY: "sk-ant-ąbc", APP_TOKEN: "sekret" });
+  assert.equal(res.status, 503);
+  assert.match((await res.json()).error, /niedozwolone znaki/);
+  assert.equal(called, false);
+  const h = await worker.fetch(new Request("https://jarvis.test/health"), { ANTHROPIC_API_KEY: "sk-ant-ąbc", APP_TOKEN: "x" });
+  assert.equal((await h.json()).key_format_ok, false);
+});
+
+test("connection failure reports only the error type", async () => {
+  globalThis.fetch = async () => {
+    throw new TypeError("fetch failed: secret sk-ant-xyz");
+  };
+  const res = await worker.fetch(chatRequest([{ role: "user", content: "hej" }]), env);
+  const body = await res.json();
+  assert.equal(res.status, 502);
+  assert.equal(body.error, "Nie udało się połączyć z modelem AI (TypeError)");
+  assert.ok(!body.error.includes("sk-ant"));
 });
