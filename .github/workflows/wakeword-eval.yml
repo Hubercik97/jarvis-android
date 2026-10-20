@@ -48,6 +48,13 @@ jobs:
           python tools/wakeword-eval/eval.py voices out | tee out/log.txt
           cat out/summary.md >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Alternatywa — Vosk (polski model offline)
+        run: |
+          pip install --quiet vosk
+          curl -sSfL -o vosk-pl.zip https://alphacephei.com/vosk/models/vosk-model-small-pl-0.22.zip
+          unzip -q vosk-pl.zip
+          python tools/wakeword-eval/eval_vosk.py voices vosk-model-small-pl-0.22 out | tee out/vosk-log.txt
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
