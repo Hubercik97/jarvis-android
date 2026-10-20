@@ -33,7 +33,11 @@ class ToolsTest {
     @Test
     fun `unknown tools always require confirmation and only known tools are offered`() {
         assertTrue(ToolRegistry.needsConfirmation(call("send_sms")))
-        assertEquals(listOf("open_app"), ToolRegistry.names)
+        assertEquals(
+            listOf("open_app", "set_alarm", "set_timer", "create_reminder", "add_calendar_event", "get_calendar_events", "flashlight", "open_settings"),
+            ToolRegistry.names,
+        )
+        assertTrue(ToolRegistry.specs.all { it.risk == ToolRisk.SAFE }) // etapy A i D: nic nie wysyła ani nie usuwa
         assertEquals("Otwórz aplikację: Spotify", ToolRegistry.describe(call(ToolRegistry.OPEN_APP, "name" to "Spotify")))
     }
 
@@ -67,5 +71,48 @@ class ToolsTest {
     @Test(expected = ProtocolException::class)
     fun `response without text and without valid actions is an error`() {
         ChatProtocol.parseResponse("""{"reply":"","actions":[{"id":"","tool":"x","args":{}}]}""")
+    }
+
+    @Test
+    fun `stage D tools validate ranges, formats and enums`() {
+        fun ok(c: ToolCall) = assertTrue("powinno przejść: $c", ToolRegistry.validate(c) is ToolValidation.Ok)
+        fun bad(c: ToolCall) = assertTrue("powinno odrzucić: $c", ToolRegistry.validate(c) is ToolValidation.Error)
+        ok(call(ToolRegistry.SET_ALARM, "hour" to 7, "minute" to 30))
+        ok(call(ToolRegistry.SET_ALARM, "hour" to 7.0)) // JSON bywa liczbą zmiennoprzecinkową
+        bad(call(ToolRegistry.SET_ALARM, "hour" to 24))
+        bad(call(ToolRegistry.SET_ALARM, "hour" to 7.5))
+        ok(call(ToolRegistry.SET_TIMER, "seconds" to 600))
+        bad(call(ToolRegistry.SET_TIMER, "seconds" to 0))
+        ok(call(ToolRegistry.CREATE_REMINDER, "text" to "Wyjmij pranie", "in_minutes" to 40))
+        bad(call(ToolRegistry.CREATE_REMINDER, "in_minutes" to 40))
+        ok(call(ToolRegistry.ADD_CALENDAR_EVENT, "title" to "Dentysta", "date" to "2026-10-22", "start_time" to "9:30"))
+        bad(call(ToolRegistry.ADD_CALENDAR_EVENT, "title" to "Dentysta", "date" to "22.10.2026"))
+        bad(call(ToolRegistry.ADD_CALENDAR_EVENT, "title" to "Dentysta", "date" to "2026-10-22", "start_time" to "9.30"))
+        ok(call(ToolRegistry.GET_CALENDAR_EVENTS))
+        ok(call(ToolRegistry.FLASHLIGHT, "on" to true))
+        bad(call(ToolRegistry.FLASHLIGHT, "on" to "tak"))
+        ok(call(ToolRegistry.OPEN_SETTINGS, "screen" to "Bluetooth"))
+        bad(call(ToolRegistry.OPEN_SETTINGS, "screen" to "developer"))
+        assertEquals(
+            ToolValidation.Ok(mapOf("screen" to "bluetooth")),
+            ToolRegistry.validate(call(ToolRegistry.OPEN_SETTINGS, "screen" to " Bluetooth ")),
+        )
+    }
+
+    @Test
+    fun `descriptions are readable in polish`() {
+        assertEquals("Ustaw alarm: 7:05 — praca", ToolRegistry.describe(call(ToolRegistry.SET_ALARM, "hour" to 7, "minute" to 5, "label" to "praca")))
+        assertEquals("Ustaw minutnik: 1 godz. 30 min", ToolRegistry.describe(call(ToolRegistry.SET_TIMER, "seconds" to 5400)))
+        assertEquals("Latarka: włącz", ToolRegistry.describe(call(ToolRegistry.FLASHLIGHT, "on" to true)))
+        assertEquals("Sprawdź kalendarz: dziś", ToolRegistry.describe(call(ToolRegistry.GET_CALENDAR_EVENTS)))
+    }
+
+    @Test
+    fun `request carries phone local time and zone`() {
+        val json = JSONObject(
+            ChatProtocol.buildRequest(listOf(ChatMessage(Kind.USER, "x")), "1", localTime = "wtorek, 20 października 2026, 20:59", timeZone = "Europe/Amsterdam"),
+        ).getJSONObject("client")
+        assertEquals("wtorek, 20 października 2026, 20:59", json.getString("local_time"))
+        assertEquals("Europe/Amsterdam", json.getString("tz"))
     }
 }

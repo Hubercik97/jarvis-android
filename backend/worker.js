@@ -63,7 +63,110 @@ export const TOOL_DEFS = {
       additionalProperties: false,
     },
   },
+  set_alarm: {
+    description: "Ustawia alarm (budzik) w aplikacji Zegar na podaną godzinę najbliższego wystąpienia.",
+    input_schema: {
+      type: "object",
+      properties: {
+        hour: { type: "integer", minimum: 0, maximum: 23 },
+        minute: { type: "integer", minimum: 0, maximum: 59 },
+        label: { type: "string", maxLength: 60, description: "Opcjonalny opis alarmu." },
+      },
+      required: ["hour"],
+      additionalProperties: false,
+    },
+  },
+  set_timer: {
+    description: "Uruchamia minutnik (odliczanie) w aplikacji Zegar.",
+    input_schema: {
+      type: "object",
+      properties: {
+        seconds: { type: "integer", minimum: 1, maximum: 86400, description: "Czas odliczania w sekundach." },
+        label: { type: "string", maxLength: 60 },
+      },
+      required: ["seconds"],
+      additionalProperties: false,
+    },
+  },
+  create_reminder: {
+    description:
+      "Tworzy przypomnienie (powiadomienie na telefonie). Podaj ALBO in_minutes („za 10 minut”), ALBO hour i minute " +
+      "(„o 18:30”), opcjonalnie day_offset (0 = dziś, 1 = jutro).",
+    input_schema: {
+      type: "object",
+      properties: {
+        text: { type: "string", maxLength: 200, description: "Treść przypomnienia." },
+        in_minutes: { type: "integer", minimum: 1, maximum: 10080 },
+        hour: { type: "integer", minimum: 0, maximum: 23 },
+        minute: { type: "integer", minimum: 0, maximum: 59 },
+        day_offset: { type: "integer", minimum: 0, maximum: 30 },
+      },
+      required: ["text"],
+      additionalProperties: false,
+    },
+  },
+  add_calendar_event: {
+    description:
+      "Przygotowuje nowe wydarzenie w kalendarzu telefonu. Otwiera systemowy ekran kalendarza z wypełnionymi danymi — " +
+      "użytkownik sam je zapisuje. Bez start_time wydarzenie jest całodniowe.",
+    input_schema: {
+      type: "object",
+      properties: {
+        title: { type: "string", maxLength: 120 },
+        date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Data RRRR-MM-DD." },
+        start_time: { type: "string", pattern: "^\\d{1,2}:\\d{2}$", description: "Godzina HH:MM." },
+        duration_minutes: { type: "integer", minimum: 5, maximum: 1440 },
+      },
+      required: ["title", "date"],
+      additionalProperties: false,
+    },
+  },
+  get_calendar_events: {
+    description: "Odczytuje wydarzenia z kalendarza telefonu (domyślnie dziś). Wynik streść użytkownikowi.",
+    input_schema: {
+      type: "object",
+      properties: {
+        date: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$", description: "Pierwszy dzień RRRR-MM-DD." },
+        days: { type: "integer", minimum: 1, maximum: 7 },
+      },
+      additionalProperties: false,
+    },
+  },
+  flashlight: {
+    description: "Włącza albo wyłącza latarkę telefonu.",
+    input_schema: {
+      type: "object",
+      properties: { on: { type: "boolean" } },
+      required: ["on"],
+      additionalProperties: false,
+    },
+  },
+  open_settings: {
+    description:
+      "Otwiera ekran ustawień Androida. Aplikacja nie może sama przełączać Wi-Fi ani Bluetooth — tylko otworzyć ekran.",
+    input_schema: {
+      type: "object",
+      properties: {
+        screen: {
+          type: "string",
+          enum: ["main", "bluetooth", "wifi", "battery", "sound", "display", "apps", "location", "notifications"],
+        },
+      },
+      required: ["screen"],
+      additionalProperties: false,
+    },
+  },
 };
+
+/** Kontekst czasu z telefonu (model nie zna aktualnej daty). Zwraca zdanie do instrukcji albo "". */
+export function timeContext(client) {
+  if (!client || typeof client !== "object") return "";
+  const t = typeof client.local_time === "string" ? client.local_time.trim() : "";
+  const tz = typeof client.tz === "string" ? client.tz.trim() : "";
+  if (!t || t.length > 80 || !/^[\p{L}0-9 ,.:-]+$/u.test(t)) return "";
+  const zone = /^[A-Za-z0-9_+\/-]{1,40}$/.test(tz) ? ` (strefa ${tz})` : "";
+  return `Aktualny czas u użytkownika: ${t}${zone}. Używaj go do dat i godzin.`;
+}
 
 /** Lista narzędzi zgłoszonych przez aplikację, ograniczona do znanych backendowi. */
 export function parseClientTools(input) {
@@ -283,7 +386,7 @@ async function handleChat(request, env) {
       body: JSON.stringify({
         model: env.MODEL || DEFAULT_MODEL,
         max_tokens: 600,
-        system: tools.length ? `${SYSTEM_PROMPT} ${TOOLS_PROMPT}` : SYSTEM_PROMPT,
+        system: [SYSTEM_PROMPT, tools.length ? TOOLS_PROMPT : "", timeContext(body.client)].filter(Boolean).join(" "),
         messages: withToolResults(toModelMessages(messages), pending),
         ...(tools.length
           ? { tools: tools.map((name) => ({ name, description: TOOL_DEFS[name].description, input_schema: TOOL_DEFS[name].input_schema })) }

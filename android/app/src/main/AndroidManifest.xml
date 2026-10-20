@@ -11,6 +11,8 @@
     <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION" />
     <!-- Kalendarz: tylko odczyt wydarzeń. -->
     <uses-permission android:name="android.permission.READ_CALENDAR" />
+    <!-- Alarm i minutnik w aplikacji Zegar (uprawnienie zwykłe, bez pytania). -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM" />
     <!-- Przypomnienia. -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />

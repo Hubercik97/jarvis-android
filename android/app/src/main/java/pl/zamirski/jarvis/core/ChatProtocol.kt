@@ -31,6 +31,9 @@ object ChatProtocol {
         appVersion: String = "",
         tools: List<String> = emptyList(),
         pending: ToolPending? = null,
+        /** Czas lokalny i strefa telefonu — AI nie zna aktualnej daty, a potrzebuje jej do alarmów i kalendarza. */
+        localTime: String? = null,
+        timeZone: String? = null,
     ): String {
         val messages = history
             .filter { it.kind != Kind.NOTICE && it.text.isNotBlank() }
@@ -51,7 +54,13 @@ object ChatProtocol {
         }
         val root = JSONObject()
             .put("messages", array)
-            .put("client", JSONObject().put("app", "jarvis-android").put("version", appVersion))
+            .put(
+                "client",
+                JSONObject().put("app", "jarvis-android").put("version", appVersion).apply {
+                    if (!localTime.isNullOrBlank()) put("local_time", localTime)
+                    if (!timeZone.isNullOrBlank()) put("tz", timeZone)
+                },
+            )
         if (tools.isNotEmpty()) root.put("tools", JSONArray(tools))
         if (pending != null) {
             val actions = JSONArray()

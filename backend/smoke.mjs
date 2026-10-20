@@ -91,3 +91,22 @@ if (!ask.ok || !action || action.tool !== "open_app") {
   if (!done.ok || !doneBody.reply) fail("Narzędzia", `Odpowiedź po wyniku narzędzia: HTTP ${done.status} ${doneBody.error || ""}`);
   notice("Narzędzia: odpowiedź po wykonaniu", doneBody.reply.slice(0, 200));
 }
+
+// Etap D: czy model wybiera właściwe narzędzia i liczy czas z kontekstu telefonu (ostrzeżenia — model bywa niedeterministyczny).
+const ALL_TOOLS = ["open_app", "set_alarm", "set_timer", "create_reminder", "add_calendar_event", "get_calendar_events", "flashlight", "open_settings"];
+const client = { app: "jarvis-smoke-test", local_time: "wtorek, 20 października 2026, 20:59", tz: "Europe/Warsaw" };
+for (const [prompt, expected] of [
+  ["Ustaw minutnik na 10 minut", "set_timer"],
+  ["Przypomnij mi jutro o ósmej, żeby zadzwonić do mechanika", "create_reminder"],
+  ["Włącz latarkę", "flashlight"],
+]) {
+  const r = await fetch(url + "/chat", {
+    method: "POST",
+    headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({ messages: [{ role: "user", content: prompt }], tools: ALL_TOOLS, client }),
+  });
+  const b = await r.json();
+  const a = Array.isArray(b.actions) ? b.actions[0] : null;
+  if (a && a.tool === expected) notice(`Etap D: ${expected}`, `„${prompt}” → ${JSON.stringify(a.args)}`);
+  else console.log(`::warning title=Etap D: ${expected}::„${prompt}” → ${a ? a.tool + " " + JSON.stringify(a.args) : b.error || b.reply || "brak działania"}`);
+}

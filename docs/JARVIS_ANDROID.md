@@ -30,6 +30,7 @@ dolny pasek z dużym mikrofonem.
 | Mikrofon → polska mowa → AI → odpowiedź głosem | ✅ (wymaga skonfigurowanego backendu) |
 | Pisanie poleceń tekstem | ✅ |
 | Otwieranie aplikacji i gier („otwórz Spotify”, „uruchom Candy Crush”) | ⚠️ zaimplementowane, **do sprawdzenia na S21** — dopasowanie nazwy na telefonie, lista aplikacji nie trafia do chmury |
+| Alarm, minutnik, przypomnienie, kalendarz, latarka, ekrany ustawień poleceniem | ⚠️ zaimplementowane, **do sprawdzenia na S21** |
 | Historia rozmów | ✅ zapisana na telefonie (maks. 50 rozmów, bez zdjęć); bieżąca rozmowa wraca po ponownym uruchomieniu |
 | Tryb rozmowy (bez dotykania ekranu) | ✅ po odpowiedzi Jarvis sam znowu słucha; koniec: „to wszystko” / „dziękuję”. Tylko przy otwartej aplikacji — ekran nie gaśnie w trakcie |
 | Kamera → zdjęcie → opis przez AI | ✅ (aparat systemowy, zdjęcie usuwane po wysłaniu) |
@@ -97,3 +98,11 @@ model **proponuje** wywołanie (`actions`), a aplikacja:
 | Narzędzie | Ryzyko | Uprawnienia | Uwagi |
 |---|---|---|---|
 | `open_app` | bez potwierdzenia | brak (deklaracja `<queries>` dla aplikacji z ikoną) | Do AI wraca tylko wynik i najwyżej 3 podobne nazwy, nigdy lista aplikacji |
+| `set_alarm`, `set_timer` | bez potwierdzenia | `SET_ALARM` (zwykłe) | Przekazywane do aplikacji Zegar (Samsung Clock) |
+| `create_reminder` | bez potwierdzenia | powiadomienia | Istniejące przypomnienia Jarvisa; mogą przyjść z kilkuminutowym opóźnieniem |
+| `add_calendar_event` | potwierdzasz w kalendarzu | brak | Otwiera systemowy ekran z wypełnionym wydarzeniem — zapisujesz sam |
+| `get_calendar_events` | bez potwierdzenia | `READ_CALENDAR` (zgoda w ekranie Kalendarz) | Tytuły i godziny wydarzeń trafiają do AI tylko na Twoje polecenie |
+| `flashlight` | bez potwierdzenia | brak | |
+| `open_settings` | bez potwierdzenia | brak | Tylko otwiera ekran — Android nie pozwala aplikacjom przełączać Wi-Fi/Bluetooth |
+
+Aplikacja wysyła z każdym poleceniem czas lokalny i strefę telefonu (`client.local_time`, `client.tz`), bo model nie zna aktualnej daty.

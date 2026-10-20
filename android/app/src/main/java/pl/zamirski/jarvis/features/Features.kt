@@ -17,6 +17,10 @@ object FeatureRegistry {
     val all: List<Feature> = listOf(
         Feature("chat", "Rozmowa po polsku (mikrofon + tekst)", FeatureState.ACTIVE),
         Feature("open_app", "Otwieranie aplikacji i gier poleceniem („otwórz Spotify”)", FeatureState.TESTING),
+        Feature("clock", "Alarm i minutnik poleceniem", FeatureState.TESTING),
+        Feature("reminder_tool", "Przypomnienia poleceniem („przypomnij mi za 10 minut…”)", FeatureState.TESTING),
+        Feature("calendar_tool", "Kalendarz poleceniem (sprawdzenie dnia, nowe wydarzenie do zapisania)", FeatureState.TESTING),
+        Feature("torch_settings", "Latarka i ekrany ustawień poleceniem", FeatureState.TESTING),
         Feature("voice_reply", "Odpowiedzi głosowe po polsku", FeatureState.ACTIVE),
         Feature("history", "Historia rozmów (na telefonie)", FeatureState.ACTIVE),
         Feature("hands_free", "Tryb rozmowy bez dotykania ekranu (przy otwartej aplikacji)", FeatureState.ACTIVE),

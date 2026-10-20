@@ -12,6 +12,7 @@ import pl.zamirski.jarvis.core.FailureReason
 import pl.zamirski.jarvis.core.HealthResult
 import pl.zamirski.jarvis.core.ProtocolException
 import pl.zamirski.jarvis.core.ToolPending
+import pl.zamirski.jarvis.core.ToolTime
 import pl.zamirski.jarvis.core.Urls
 import pl.zamirski.jarvis.settings.AppSettings
 import java.io.IOException
@@ -19,6 +20,8 @@ import java.net.HttpURLConnection
 import java.net.SocketTimeoutException
 import java.net.URL
 import java.net.UnknownHostException
+import java.time.ZoneId
+import java.time.ZonedDateTime
 
 /** Łączy się z backendem Jarvisa (HTTPS). Klucz modelu AI jest wyłącznie na serwerze. */
 class BackendAiClient(
@@ -37,7 +40,11 @@ class BackendAiClient(
             ?: return@withContext AiResult.Failure(FailureReason.NOT_CONFIGURED)
         if (!NetworkMonitor.isOnline(context)) return@withContext AiResult.Failure(FailureReason.OFFLINE)
         try {
-            val body = ChatProtocol.buildRequest(history, BuildConfig.VERSION_NAME, tools, pending)
+            val now = ZonedDateTime.now(ZoneId.systemDefault())
+            val body = ChatProtocol.buildRequest(
+                history, BuildConfig.VERSION_NAME, tools, pending,
+                localTime = ToolTime.localTimeLabel(now), timeZone = now.zone.id,
+            )
             val response = request("POST", "$base/chat", body, 60_000)
             when (response.code) {
                 in 200..299 -> ChatProtocol.parseResponse(response.body).let { AiResult.Success(it.text, it.actions) }
