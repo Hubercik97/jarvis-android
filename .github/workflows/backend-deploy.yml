@@ -38,7 +38,12 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           JARVIS_APP_TOKEN: ${{ secrets.JARVIS_APP_TOKEN }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
         run: |
+          for n in TAVILY_API_KEY GOOGLE_TTS_API_KEY; do
+            if [ -n "${!n}" ]; then echo "::notice title=Opcjonalny sekret::$n ustawiony"; else echo "Opcjonalny $n: brak (funkcja wyłączona)"; fi
+          done
           missing=""
           for n in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID ANTHROPIC_API_KEY JARVIS_APP_TOKEN; do
             if [ -z "${!n}" ]; then missing="$missing $n"; fi
@@ -69,7 +74,12 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           JARVIS_APP_TOKEN: ${{ secrets.JARVIS_APP_TOKEN }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
         run: |
+          for n in TAVILY_API_KEY GOOGLE_TTS_API_KEY; do
+            if [ -n "${!n}" ]; then echo "::notice title=Opcjonalny sekret::$n ustawiony"; else echo "Opcjonalny $n: brak (funkcja wyłączona)"; fi
+          done
           missing=""
           for n in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID ANTHROPIC_API_KEY JARVIS_APP_TOKEN; do
             if [ -z "${!n}" ]; then missing="$missing $n"; fi
@@ -127,9 +137,24 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           APP_TOKEN: ${{ secrets.JARVIS_APP_TOKEN }}
+          TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
+          GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
         run: |
           printf '%s' "$ANTHROPIC_API_KEY" | npx --yes wrangler@3 secret put ANTHROPIC_API_KEY --env test > /dev/null
           printf '%s' "$APP_TOKEN" | npx --yes wrangler@3 secret put APP_TOKEN --env test > /dev/null
+          # Opcjonalne: ustawiane tylko gdy istnieją w GitHub (brak = funkcja wyłączona, nic nie jest usuwane).
+          if [ -n "$TAVILY_API_KEY" ]; then
+            printf '%s' "$TAVILY_API_KEY" | npx --yes wrangler@3 secret put TAVILY_API_KEY --env test > /dev/null
+            echo "Wyszukiwanie w internecie: klucz ustawiony."
+          else
+            echo "Wyszukiwanie w internecie: brak TAVILY_API_KEY — funkcja wyłączona."
+          fi
+          if [ -n "$GOOGLE_TTS_API_KEY" ]; then
+            printf '%s' "$GOOGLE_TTS_API_KEY" | npx --yes wrangler@3 secret put GOOGLE_TTS_API_KEY --env test > /dev/null
+            echo "Głos w chmurze: klucz ustawiony."
+          else
+            echo "Głos w chmurze: brak GOOGLE_TTS_API_KEY — funkcja wyłączona."
+          fi
           echo "Sekrety ustawione (wartości nie są wypisywane)."
 
       - name: Test dymny (/health, /chat z AI, odrzucenie bez tokenu)

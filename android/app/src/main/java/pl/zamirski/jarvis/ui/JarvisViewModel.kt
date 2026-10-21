@@ -24,6 +24,8 @@ import pl.zamirski.jarvis.core.FailureReason
 import pl.zamirski.jarvis.core.HealthResult
 import pl.zamirski.jarvis.core.Kind
 import pl.zamirski.jarvis.core.Messages
+import pl.zamirski.jarvis.core.Source
+import pl.zamirski.jarvis.core.Sources
 import pl.zamirski.jarvis.core.ToolCall
 import pl.zamirski.jarvis.core.ToolPending
 import pl.zamirski.jarvis.core.ToolRegistry
@@ -79,6 +81,10 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
     val messages = mutableStateListOf<ChatMessage>()
 
     var connection by mutableStateOf<ConnectionState>(ConnectionState.Checking)
+        private set
+
+    /** Co jest włączone na serwerze (pamięć, wyszukiwanie, głos w chmurze); null = brak danych. */
+    var backendFeatures by mutableStateOf<pl.zamirski.jarvis.core.BackendHealth?>(null)
         private set
 
     var weather by mutableStateOf<WeatherState>(WeatherState.Idle)
@@ -264,6 +270,13 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
         liveText = "Myślę…"
         val snapshot = messages.toList()
         viewModelScope.launch { runAiTurn(snapshot) }
+        // Wyszukiwanie w internecie trwa dłużej — po chwili mówimy, co się dzieje.
+        viewModelScope.launch {
+            delay(6_000)
+            if (mode == VoiceMode.THINKING && liveText == "Myślę…" && backendFeatures?.search == true) {
+                liveText = "Szukam i analizuję źródła… (do minuty)"
+            }
+        }
     }
 
     /**
@@ -293,7 +306,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
                     if (idx >= 0 && messages[idx].imageBase64 != null) messages[idx] = messages[idx].copy(imageBase64 = null)
                     connection = ConnectionState.Ok((connection as? ConnectionState.Ok)?.model ?: "")
                     if (result.actions.isEmpty()) {
-                        finishReply(result.text)
+                        finishReply(result.text, result.sources)
                         return
                     }
                     if (result.text.isNotBlank()) messages += ChatMessage(Kind.ASSISTANT, result.text)
@@ -308,10 +321,11 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
         finishReply("Przerwałem: to polecenie wymagało zbyt wielu kroków naraz.")
     }
 
-    private fun finishReply(text: String) {
-        messages += ChatMessage(Kind.ASSISTANT, text)
+    private fun finishReply(text: String, sources: List<Source> = emptyList()) {
+        // Na ekranie i w historii: odpowiedź + źródła; na głos: sama odpowiedź (bez [n] i adresów).
+        messages += ChatMessage(Kind.ASSISTANT, Sources.withSources(text, sources))
         persist()
-        if (!speakOrIdle(text) && handsFreeActive) {
+        if (!speakOrIdle(Sources.speakable(text)) && handsFreeActive) {
             handsFreeActive = false
             liveText = "Tryb rozmowy zakończony — odpowiedzi głosowe są wyłączone lub brak polskiego głosu."
         }
@@ -416,7 +430,9 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
     fun refreshConnection() {
         connection = ConnectionState.Checking
         viewModelScope.launch {
-            connection = when (val h = ai.health()) {
+            val result = ai.health()
+            backendFeatures = (result as? HealthResult.Success)?.health
+            connection = when (val h = result) {
                 is HealthResult.Success -> when {
                     !h.health.configured -> ConnectionState.Problem("Serwer AI działa, ale nie ma klucza API modelu")
                     h.health.auth == "missing" ->
@@ -444,6 +460,9 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
     fun previewVoice() {
         if (mode == VoiceMode.IDLE) voice.speak("Dzień dobry, tu Jarvis. Tak będę brzmiał w odpowiedziach.")
     }
+
+    /** Ostatni błąd głosu w chmurze (wtedy Jarvis mówi głosem telefonu). */
+    val cloudVoiceError: String? get() = voice.lastCloudError
 
     // ---------- Pamięć na serwerze ----------
 

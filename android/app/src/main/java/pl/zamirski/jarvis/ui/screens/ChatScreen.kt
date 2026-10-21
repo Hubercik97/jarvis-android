@@ -47,6 +47,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import pl.zamirski.jarvis.core.ChatMessage
 import pl.zamirski.jarvis.core.Kind
+import pl.zamirski.jarvis.core.Sources
+import androidx.compose.foundation.clickable
+import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.text.style.TextDecoration
 import pl.zamirski.jarvis.ui.AppActions
 import pl.zamirski.jarvis.ui.JarvisViewModel
 import pl.zamirski.jarvis.ui.VoiceMode
@@ -178,14 +182,31 @@ fun MessageBubble(m: ChatMessage) {
             if (m.attachmentLabel != null) {
                 Text(m.attachmentLabel, color = JColors.Orange, fontSize = 13.sp)
             }
+            val (body, sources) = if (m.kind == Kind.ASSISTANT) Sources.split(m.text) else m.text to emptyList()
             Text(
-                m.text,
+                body,
                 color = JColors.Text,
                 fontSize = 16.sp,
                 lineHeight = 22.sp,
                 maxLines = if (m.attachmentLabel != null && m.kind == Kind.USER) 4 else Int.MAX_VALUE,
                 overflow = TextOverflow.Ellipsis,
             )
+            if (sources.isNotEmpty()) {
+                val uri = LocalUriHandler.current
+                Text("ŹRÓDŁA", color = JColors.TextDim, fontSize = 11.sp, letterSpacing = 1.5.sp, modifier = Modifier.padding(top = 8.dp))
+                sources.forEach { s ->
+                    Text(
+                        "[${s.n}] ${s.title}" + (s.date?.let { " · $it" } ?: ""),
+                        color = JColors.Accent,
+                        fontSize = 13.sp,
+                        lineHeight = 18.sp,
+                        textDecoration = TextDecoration.Underline,
+                        modifier = Modifier
+                            .padding(top = 4.dp)
+                            .clickable { runCatching { uri.openUri(s.url) } },
+                    )
+                }
+            }
         }
     }
 }

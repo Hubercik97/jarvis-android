@@ -55,6 +55,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.rememberCoroutineScope
 import kotlinx.coroutines.launch
 import pl.zamirski.jarvis.core.MemoryState
+import pl.zamirski.jarvis.net.BackendTtsClient
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -92,6 +93,10 @@ fun SettingsScreen(vm: JarvisViewModel, actions: AppActions, onBack: () -> Unit)
                     VoiceOutput.Status.NO_POLISH -> StatusLine(false, "Głos polski", "", "brak pakietu — Ustawienia → Zamiana tekstu na mowę")
                     VoiceOutput.Status.FAILED -> StatusLine(false, "Głos polski", "", "błąd syntezatora")
                     VoiceOutput.Status.INITIALIZING -> Text("⏳ Głos polski: sprawdzanie…", color = JColors.TextDim, fontSize = 14.sp)
+                }
+                vm.backendFeatures?.let { f ->
+                    StatusLine(f.search, "Wyszukiwanie w internecie", "włączone (Tavily)", "wyłączone — brak klucza wyszukiwarki na serwerze")
+                    StatusLine(f.memory, "Pamięć w chmurze", "włączona", "wyłączona")
                 }
                 when (val c = vm.connection) {
                     ConnectionState.Checking -> Text("⏳ Połączenie z AI: sprawdzanie…", color = JColors.TextDim, fontSize = 14.sp)
@@ -352,7 +357,41 @@ private fun VoiceChoiceCard(vm: JarvisViewModel) {
     var pitch by remember { mutableStateOf(vm.settings.ttsPitch) }
     LaunchedEffect(vm.voiceStatus) { voices = vm.polishVoices() }
 
+    var cloudOn by remember { mutableStateOf(vm.settings.cloudVoice) }
+    var cloudName by remember { mutableStateOf(vm.settings.cloudVoiceName) }
+    val cloudAvailable = vm.backendFeatures?.tts == true
+
     GlassCard(Modifier.fillMaxWidth()) {
+        // --- Głos w chmurze (naturalny męski) ---
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text("Naturalny męski głos (chmura)", color = JColors.Text, fontSize = 16.sp, modifier = Modifier.weight(1f))
+            Switch(
+                checked = cloudOn && cloudAvailable,
+                enabled = cloudAvailable,
+                onCheckedChange = {
+                    cloudOn = it
+                    vm.settings.cloudVoice = it
+                    if (it) vm.previewVoice()
+                },
+            )
+        }
+        if (!cloudAvailable) {
+            InfoText(
+                "Niedostępny: serwer nie ma klucza Google Text-to-Speech. To usługa z darmowym limitem " +
+                    "(1 mln znaków miesięcznie dla głosów Chirp 3 HD, potem 30 USD za 1 mln) — włączana tylko za Twoją zgodą.",
+            )
+        } else {
+            BackendTtsClient.MALE_VOICES.forEach { name ->
+                VoiceRow("Google Chirp 3 HD — $name" + if (name == BackendTtsClient.DEFAULT_VOICE) " (polecany)" else "", cloudName == name) {
+                    cloudName = name
+                    vm.settings.cloudVoiceName = name
+                    if (cloudOn) vm.previewVoice()
+                }
+            }
+            vm.cloudVoiceError?.let { InfoText("Ostatni błąd głosu w chmurze: $it — użyto głosu telefonu.", JColors.Warning) }
+        }
+        Spacer(Modifier.height(10.dp))
+        Text("Głos telefonu (zapasowy, offline)", color = JColors.TextDim, fontSize = 13.sp)
         if (voices.isEmpty()) {
             InfoText("Brak danych o głosach — syntezator jeszcze się uruchamia albo nie ma polskich głosów.")
         } else {

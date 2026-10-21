@@ -2,21 +2,46 @@ package pl.zamirski.jarvis.voice
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.MediaPlayer
 import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
 import android.speech.tts.Voice
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import pl.zamirski.jarvis.net.BackendTtsClient
 import pl.zamirski.jarvis.settings.AppSettings
+import java.io.File
 import java.util.Locale
 
 /** Polski głos dostępny w syntezatorze telefonu (Android nie podaje płci — wybór na słuch). */
 data class VoiceOption(val name: String, val label: String, val offline: Boolean)
 
-/** Odpowiedzi głosowe po polsku przez systemowy syntezator mowy (TTS). */
+/**
+ * Odpowiedzi głosowe po polsku.
+ * - Domyślnie: systemowy syntezator telefonu (darmowy, działa offline z pobranym głosem).
+ * - Opcjonalnie: głos w chmurze (Google Chirp 3 HD przez backend) — gdy włączony w Ustawieniach.
+ *   Przy błędzie sieci lub serwera Jarvis automatycznie mówi głosem telefonu.
+ */
 class VoiceOutput(context: Context, private val listener: Listener) : TextToSpeech.OnInitListener {
 
+    private val app = context.applicationContext
     private val settings = AppSettings(context)
+    private val cloud = BackendTtsClient(settings)
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
+    private var cloudJob: Job? = null
+    private var player: MediaPlayer? = null
+    private var generation = 0
+
+    /** Ostatni powód przejścia z głosu w chmurze na głos telefonu (do pokazania w Ustawieniach). */
+    var lastCloudError: String? = null
+        private set
 
     enum class Status { INITIALIZING, READY, NO_POLISH, FAILED }
 
@@ -107,17 +132,110 @@ class VoiceOutput(context: Context, private val listener: Listener) : TextToSpee
 
     /** Zwraca false, gdy mowa nie jest możliwa (brak polskiego głosu lub błąd TTS). */
     fun speak(text: String): Boolean {
-        if (status != Status.READY || text.isBlank()) return false
+        if (text.isBlank()) return false
+        stopPlayback(notify = false)
+        if (settings.cloudVoice) {
+            speakCloud(text)
+            return true
+        }
+        return speakDevice(text)
+    }
+
+    private fun speakDevice(text: String): Boolean {
+        if (status != Status.READY) return false
         applySettings()
         counter += 1
         return tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-$counter") == TextToSpeech.SUCCESS
     }
 
+    private fun speakCloud(text: String) {
+        val gen = ++generation
+        cloudJob = scope.launch {
+            val audio = try {
+                cloud.synthesize(text, settings.cloudVoiceName, settings.ttsRate)
+            } catch (e: Exception) {
+                lastCloudError = e.message ?: "błąd sieci"
+                null
+            }
+            if (gen != generation) return@launch // przerwane w międzyczasie
+            if (audio == null || !play(audio)) {
+                // Zapasowo: głos telefonu, żeby odpowiedź nie przepadła.
+                if (!speakDevice(text)) listener.onSpeakingFinished()
+            } else {
+                lastCloudError = null
+            }
+        }
+    }
+
+    private suspend fun play(audio: ByteArray): Boolean {
+        val file = File(app.cacheDir, "jarvis_voice.mp3")
+        return try {
+            withContext(Dispatchers.IO) { file.writeBytes(audio) }
+            val mp = MediaPlayer().apply {
+                setAudioAttributes(
+                    AudioAttributes.Builder()
+                        .setUsage(AudioAttributes.USAGE_ASSISTANT)
+                        .setContentType(AudioAttributes.CONTENT_TYPE_SPEECH)
+                        .build(),
+                )
+                setDataSource(file.absolutePath)
+                setOnCompletionListener {
+                    releasePlayer()
+                    listener.onSpeakingFinished()
+                }
+                setOnErrorListener { _, _, _ ->
+                    releasePlayer()
+                    listener.onSpeakingFinished()
+                    true
+                }
+                prepare()
+            }
+            player = mp
+            mp.start()
+            listener.onSpeakingStarted()
+            true
+        } catch (e: Exception) {
+            lastCloudError = "odtwarzanie: ${e.javaClass.simpleName}"
+            releasePlayer()
+            false
+        }
+    }
+
+    private fun releasePlayer() {
+        player?.let {
+            try {
+                it.release()
+            } catch (e: Exception) {
+                // już zwolniony
+            }
+        }
+        player = null
+    }
+
+    private fun stopPlayback(notify: Boolean) {
+        generation++
+        cloudJob?.cancel()
+        cloudJob = null
+        val wasPlaying = player != null
+        player?.let {
+            try {
+                it.stop()
+            } catch (e: Exception) {
+                // nie grał
+            }
+        }
+        releasePlayer()
+        if (notify && wasPlaying) main.post { listener.onSpeakingFinished() }
+    }
+
     fun stop() {
+        stopPlayback(notify = true)
         tts.stop()
     }
 
     fun shutdown() {
+        stopPlayback(notify = false)
+        scope.cancel()
         tts.stop()
         tts.shutdown()
     }

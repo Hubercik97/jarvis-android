@@ -11,6 +11,10 @@
 // Worker niczego nie loguje — ani treści rozmów, ani nagłówków, ani kluczy.
 
 import { handleMemory, loadFacts, memoryPrompt } from "./memory.js";
+import {
+  BUDGET, RESEARCH_PROMPT, SERVER_TOOL_DEFS, budgetExhausted, citedSources, newResearch, runServerTool, searchEnabled,
+} from "./research.js";
+import { handleTts, ttsEnabled } from "./tts.js";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 export const DEFAULT_MODEL = "claude-haiku-5-5";
@@ -433,39 +437,96 @@ async function handleChat(request, env) {
   if (rateLimited()) return json({ error: "Za dużo zapytań — spróbuj za chwilę" }, 429);
   const facts = await loadFacts(env);
 
-  let upstream;
-  try {
-    upstream = await callModel(apiKey, {
-      model: env.MODEL || DEFAULT_MODEL,
-      max_tokens: 600,
-      system: [SYSTEM_PROMPT, tools.length ? TOOLS_PROMPT : "", timeContext(body.client), memoryPrompt(facts)].filter(Boolean).join(" "),
-      messages: withToolResults(toModelMessages(messages), pending),
-      ...(tools.length
-        ? { tools: tools.map((name) => ({ name, description: TOOL_DEFS[name].description, input_schema: TOOL_DEFS[name].input_schema })) }
-        : {}),
+  const search = searchEnabled(env);
+  const serverTools = search ? Object.keys(SERVER_TOOL_DEFS) : [];
+  const toolList = [
+    ...tools.map((name) => ({ name, description: TOOL_DEFS[name].description, input_schema: TOOL_DEFS[name].input_schema })),
+    ...serverTools.map((name) => ({ name, description: SERVER_TOOL_DEFS[name].description, input_schema: SERVER_TOOL_DEFS[name].input_schema })),
+  ];
+  const system = [
+    SYSTEM_PROMPT,
+    tools.length ? TOOLS_PROMPT : "",
+    search ? RESEARCH_PROMPT : "",
+    timeContext(body.client),
+    memoryPrompt(facts),
+  ].filter(Boolean).join(" ");
+
+  // Pętla: model może kilka razy sięgnąć po wyszukiwanie/czytanie stron (wykonuje je backend) w granicach BUDGET.
+  // Działania na telefonie (actions) zawsze wracają do aplikacji — ona je waliduje i wykonuje.
+  let convo = withToolResults(toModelMessages(messages), pending);
+  const state = newResearch();
+  for (;;) {
+    state.modelCalls++;
+    const last = state.modelCalls >= BUDGET.modelCalls || Boolean(budgetExhausted(state));
+    let upstream;
+    try {
+      upstream = await callModel(apiKey, {
+        model: env.MODEL || DEFAULT_MODEL,
+        max_tokens: search ? 1200 : 600,
+        system,
+        messages: convo,
+        ...(toolList.length ? { tools: toolList, ...(last ? { tool_choice: { type: "none" } } : {}) } : {}),
+      });
+    } catch (e) {
+      // Tylko typ błędu (np. TypeError) — bez treści, która mogłaby zawierać fragment klucza.
+      const kind = e && typeof e.name === "string" ? e.name.replace(/[^A-Za-z]/g, "").slice(0, 40) : "";
+      return json({ error: `Nie udało się połączyć z modelem AI${kind ? ` (${kind})` : ""}` }, 502);
+    }
+
+    if (!upstream.ok) {
+      // Nie przekazujemy szczegółów odpowiedzi dostawcy do aplikacji — tylko kod.
+      const hint = upstream.status === 401 ? " (sprawdź klucz API)" : upstream.status === 429 ? " (limit zapytań)" : "";
+      return json({ error: `Model AI zwrócił błąd ${upstream.status}${hint}` }, 502);
+    }
+
+    let data;
+    try {
+      data = await upstream.json();
+    } catch {
+      return json({ error: "Nieprawidłowa odpowiedź modelu AI" }, 502);
+    }
+    state.inputTokens += Number(data?.usage?.input_tokens) || 0;
+
+    const reply = extractText(data);
+    const actions = extractActions(data, tools);
+    if (actions.length) {
+      const sources = citedSources(state, reply);
+      return json({ reply, actions, ...(sources.length ? { sources } : {}) });
+    }
+
+    const serverUses = Array.isArray(data?.content)
+      ? data.content.filter((b) => b && b.type === "tool_use" && serverTools.includes(b.name))
+      : [];
+    if (serverUses.length && !last) {
+      // Budżet sprawdzany PO każdym wywołaniu modelu: po przekroczeniu narzędzia już nic nie pobierają.
+      const exhausted = budgetExhausted(state);
+      const results = exhausted
+        ? serverUses.map(() => ({ content: `Osiągnięto ${exhausted} — odpowiedz na podstawie zebranych informacji.`, isError: true }))
+        : await Promise.all(serverUses.map((b) => runServerTool(env, state, b.name, b.input)));
+      convo = [
+        ...convo,
+        { role: "assistant", content: data.content },
+        {
+          role: "user",
+          content: serverUses.map((b, i) => ({
+            type: "tool_result",
+            tool_use_id: b.id,
+            content: results[i].content,
+            is_error: results[i].isError,
+          })),
+        },
+      ];
+      continue;
+    }
+
+    if (!reply) return json({ error: "Model AI zwrócił pustą odpowiedź" }, 502);
+    const sources = citedSources(state, reply);
+    return json({
+      reply,
+      ...(sources.length ? { sources } : {}),
+      ...(state.searches || state.pages ? { research: { searches: state.searches, pages: state.pages, model_calls: state.modelCalls } } : {}),
     });
-  } catch (e) {
-    // Tylko typ błędu (np. TypeError) — bez treści, która mogłaby zawierać fragment klucza.
-    const kind = e && typeof e.name === "string" ? e.name.replace(/[^A-Za-z]/g, "").slice(0, 40) : "";
-    return json({ error: `Nie udało się połączyć z modelem AI${kind ? ` (${kind})` : ""}` }, 502);
   }
-
-  if (!upstream.ok) {
-    // Nie przekazujemy szczegółów odpowiedzi dostawcy do aplikacji — tylko kod.
-    const hint = upstream.status === 401 ? " (sprawdź klucz API)" : upstream.status === 429 ? " (limit zapytań)" : "";
-    return json({ error: `Model AI zwrócił błąd ${upstream.status}${hint}` }, 502);
-  }
-
-  let data;
-  try {
-    data = await upstream.json();
-  } catch {
-    return json({ error: "Nieprawidłowa odpowiedź modelu AI" }, 502);
-  }
-  const reply = extractText(data);
-  const actions = extractActions(data, tools);
-  if (!reply && !actions.length) return json({ error: "Model AI zwrócił pustą odpowiedź" }, 502);
-  return json(actions.length ? { reply, actions } : { reply });
 }
 
 export default {
@@ -481,7 +542,15 @@ export default {
         model: env.MODEL || DEFAULT_MODEL,
         auth: authState(request, env),
         memory: Boolean(env.MEMORY),
+        search: searchEnabled(env),
+        tts: ttsEnabled(env),
       });
+    }
+    if (url.pathname === "/tts" && request.method === "POST") {
+      const auth = authState(request, env);
+      if (auth === "missing") return json({ error: "Serwer nie ma skonfigurowanego tokenu aplikacji" }, 503);
+      if (auth !== "ok") return json({ error: "Nieprawidłowy token aplikacji" }, 401);
+      return handleTts(request, env, json);
     }
     if (url.pathname === "/memory" || url.pathname.startsWith("/memory/")) {
       const auth = authState(request, env);

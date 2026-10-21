@@ -125,3 +125,36 @@ if (health.memory) {
 } else {
   console.log("::warning title=Pamięć::Backend działa bez pamięci (brak przestrzeni KV).");
 }
+
+// Wyszukiwanie w internecie (tylko gdy jest klucz Tavily). Ostrzeżenie zamiast błędu — odpowiedź zależy od modelu.
+if (health.search) {
+  const r = await fetch(url + "/chat", {
+    method: "POST", headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({
+      messages: [{ role: "user", content: "Sprawdź w internecie: jaki jest najnowszy kurs euro według NBP? Podaj źródło." }],
+      tools: [], client,
+    }),
+  });
+  const b = await r.json();
+  const n = Array.isArray(b.sources) ? b.sources.length : 0;
+  if (r.ok && n > 0) {
+    notice("Wyszukiwanie", `źródeł=${n} zapytań=${b.research?.searches} stron=${b.research?.pages} wywołań_modelu=${b.research?.model_calls}`);
+  } else {
+    console.log(`::warning title=Wyszukiwanie::Brak źródeł (HTTP ${r.status}): ${b.error || (b.reply || "").slice(0, 160)}`);
+  }
+} else {
+  console.log("::notice title=Wyszukiwanie::Wyłączone — brak sekretu TAVILY_API_KEY.");
+}
+
+// Głos w chmurze (tylko gdy jest klucz Google TTS). Krótki tekst — znikomy koszt w darmowym limicie.
+if (health.tts) {
+  const r = await fetch(url + "/tts", {
+    method: "POST", headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({ text: "Dzień dobry, tu Jarvis.", voice: "Charon", rate: 0.95 }),
+  });
+  const b = await r.json();
+  if (!r.ok || !b.audio) fail("Głos w chmurze", `HTTP ${r.status}: ${b.error || "brak audio"}`);
+  notice("Głos w chmurze", `głos=${b.voice} znaków=${b.chars} audio=${Math.round(b.audio.length * 0.75 / 1024)} KB`);
+} else {
+  console.log("::notice title=Głos w chmurze::Wyłączony — brak sekretu GOOGLE_TTS_API_KEY.");
+}

@@ -9,6 +9,7 @@ import pl.zamirski.jarvis.core.ChatMessage
 import pl.zamirski.jarvis.core.Conversation
 import pl.zamirski.jarvis.core.Kind
 import pl.zamirski.jarvis.core.Messages
+import pl.zamirski.jarvis.core.Sources
 import pl.zamirski.jarvis.core.ToolCall
 import pl.zamirski.jarvis.core.ToolPending
 import pl.zamirski.jarvis.core.ToolRegistry
@@ -62,8 +63,8 @@ class BackgroundAssistant(context: Context) {
                 }
                 is AiResult.Success -> {
                     if (r.actions.isEmpty()) {
-                        reply = r.text
-                        messages += ChatMessage(Kind.ASSISTANT, r.text)
+                        reply = Sources.speakable(r.text)
+                        messages += ChatMessage(Kind.ASSISTANT, Sources.withSources(r.text, r.sources))
                         break
                     }
                     if (r.text.isNotBlank()) messages += ChatMessage(Kind.ASSISTANT, r.text)

@@ -35,14 +35,17 @@ dolny pasek z dużym mikrofonem.
 | Tryb rozmowy (bez dotykania ekranu) | ✅ po odpowiedzi Jarvis sam znowu słucha; koniec: „to wszystko” / „dziękuję”. Tylko przy otwartej aplikacji — ekran nie gaśnie w trakcie |
 | Kamera → zdjęcie → opis przez AI | ✅ (aparat systemowy, zdjęcie usuwane po wysłaniu) |
 | Pliki (tekst, JSON, obrazy) → analiza AI | ✅ |
-| Internet → wyszukiwanie w przeglądarce | ✅ (otwiera wyszukiwarkę; AI samo nie przegląda sieci) |
+| Internet → wyszukiwanie w przeglądarce | ✅ (przycisk „Internet” otwiera wyszukiwarkę) |
+| Prawdziwe wyszukiwanie w internecie przez AI (źródła, daty, cytaty [n]) | ⚠️ zaimplementowane, **wymaga klucza `TAVILY_API_KEY`** i sprawdzenia na S21 — zob. [CLOUD.md](CLOUD.md) §Wyszukiwanie |
+| Naturalny męski głos w chmurze (Google Chirp 3 HD) | ⚠️ zaimplementowane, **wyłączone** do czasu zgody na koszty i dodania `GOOGLE_TTS_API_KEY`; bez klucza działa głos telefonu |
 | Pogoda | ✅ prawdziwe dane Open-Meteo (miasto z Ustawień albo przybliżona lokalizacja); bez danych → „Brak danych” |
 | Kalendarz | ✅ odczyt wydarzeń z kalendarza telefonu |
 | Przypomnienia | ✅ powiadomienia (mogą przyjść z kilkuminutowym opóźnieniem) |
 | Notatki, Zadania | ✅ zapisywane lokalnie, z dyktowaniem |
 | Inteligentny dom | ❌ niepodłączone — ekran mówi to wprost, bez fałszywych przełączników |
 | Komputer / panel Windows | ❌ planowane — architektura: `sync/SyncRepository` + backend |
-| Pamięć AI między rozmowami, okulary | ❌ planowane |
+| Pamięć AI między rozmowami | ⚠️ w chmurze (Cloudflare KV), **do sprawdzenia na S21** |
+| Okulary | ❌ planowane |
 | Słuchawki Bluetooth (mikrofon na czas słuchania, głos Jarvisa w słuchawkach) | ⚠️ zaimplementowane, **niesprawdzone na S21** — zob. [WAKE_WORD.md](WAKE_WORD.md) |
 | Słowo „Jarvis” w tle (inne aplikacje) | ⚠️ zaimplementowane przez rozpoznawanie mowy, **do sprawdzenia na S21** — zob. [WAKE_WORD.md](WAKE_WORD.md) §7 |
 

@@ -45,13 +45,22 @@ class AppSettings(context: Context) {
 
     /** Tempo mowy 0.7–1.4 (1.0 = normalne). */
     var ttsRate: Float
-        get() = prefs.getFloat(KEY_TTS_RATE, 1.0f)
+        get() = prefs.getFloat(KEY_TTS_RATE, 0.95f) // spokojnie, ale nie sennie
         set(value) = prefs.edit().putFloat(KEY_TTS_RATE, value.coerceIn(0.7f, 1.4f)).apply()
 
     /** Ton 0.6–1.3 (niżej = głębszy, „męski” głos). */
     var ttsPitch: Float
-        get() = prefs.getFloat(KEY_TTS_PITCH, 0.95f)
+        get() = prefs.getFloat(KEY_TTS_PITCH, 0.88f) // nieco niżej — głębszy, pewny ton
         set(value) = prefs.edit().putFloat(KEY_TTS_PITCH, value.coerceIn(0.6f, 1.3f)).apply()
+
+    /** Głos w chmurze (Google Chirp 3 HD przez backend). Wyłączony domyślnie — usługa płatna po darmowym limicie. */
+    var cloudVoice: Boolean
+        get() = prefs.getBoolean(KEY_CLOUD_VOICE, false)
+        set(value) = prefs.edit().putBoolean(KEY_CLOUD_VOICE, value).apply()
+
+    var cloudVoiceName: String
+        get() = prefs.getString(KEY_CLOUD_VOICE_NAME, null)?.takeIf { it.isNotBlank() } ?: "Charon"
+        set(value) = prefs.edit().putString(KEY_CLOUD_VOICE_NAME, value).apply()
 
     /** Miasto dla pogody; puste = przybliżona lokalizacja telefonu. */
     var weatherCity: String
@@ -69,5 +78,7 @@ class AppSettings(context: Context) {
         const val KEY_TTS_VOICE = "tts_voice"
         const val KEY_TTS_RATE = "tts_rate"
         const val KEY_TTS_PITCH = "tts_pitch"
+        const val KEY_CLOUD_VOICE = "cloud_voice"
+        const val KEY_CLOUD_VOICE_NAME = "cloud_voice_name"
     }
 }

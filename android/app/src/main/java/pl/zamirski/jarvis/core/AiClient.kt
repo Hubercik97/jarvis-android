@@ -11,7 +11,11 @@ enum class FailureReason {
 
 sealed class AiResult {
     /** text może być pusty, gdy AI tylko proponuje działania (actions). */
-    data class Success(val text: String, val actions: List<ToolCall> = emptyList()) : AiResult()
+    data class Success(
+        val text: String,
+        val actions: List<ToolCall> = emptyList(),
+        val sources: List<Source> = emptyList(),
+    ) : AiResult()
     data class Failure(val reason: FailureReason, val detail: String? = null) : AiResult()
 }
 

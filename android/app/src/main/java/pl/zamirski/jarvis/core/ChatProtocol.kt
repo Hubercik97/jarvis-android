@@ -10,12 +10,17 @@ data class BackendHealth(
     val model: String,
     /** "ok", "invalid" (brak/błędny token) albo "missing" (serwer bez APP_TOKEN — odrzuca rozmowy). */
     val auth: String,
+    val memory: Boolean = false,
+    /** Wyszukiwanie w internecie skonfigurowane na serwerze. */
+    val search: Boolean = false,
+    /** Głos w chmurze skonfigurowany na serwerze. */
+    val tts: Boolean = false,
 )
 
 class ProtocolException(message: String) : Exception(message)
 
-/** Odpowiedź backendu: tekst (może być pusty) i proponowane działania na telefonie. */
-data class AiReply(val text: String, val actions: List<ToolCall>)
+/** Odpowiedź backendu: tekst (może być pusty), proponowane działania na telefonie i źródła z internetu. */
+data class AiReply(val text: String, val actions: List<ToolCall>, val sources: List<Source> = emptyList())
 
 /**
  * Format wymiany danych z backendem Jarvisa.
@@ -97,7 +102,22 @@ object ChatProtocol {
         if (text.isBlank() && actions.isEmpty()) {
             throw ProtocolException(json.optString("error", "Pusta odpowiedź serwera"))
         }
-        return AiReply(text, actions)
+        val sources = mutableListOf<Source>()
+        val src = json.optJSONArray("sources")
+        if (src != null) {
+            for (i in 0 until src.length()) {
+                val o = src.optJSONObject(i) ?: continue
+                val url = o.optString("url", "")
+                if (!url.startsWith("https://") && !url.startsWith("http://")) continue
+                sources += Source(
+                    o.optInt("n", i + 1),
+                    o.optString("title", url).take(200),
+                    url,
+                    o.optString("date", "").takeIf { Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(it) },
+                )
+            }
+        }
+        return AiReply(text, actions, sources)
     }
 
     fun parseReply(body: String): String {
@@ -133,6 +153,9 @@ object ChatProtocol {
             configured = json.optBoolean("configured", false),
             model = json.optString("model", ""),
             auth = json.optString("auth", "invalid"),
+            memory = json.optBoolean("memory", false),
+            search = json.optBoolean("search", false),
+            tts = json.optBoolean("tts", false),
         )
     }
 }

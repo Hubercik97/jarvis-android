@@ -48,9 +48,10 @@ class BackendAiClient(
                 history, BuildConfig.VERSION_NAME, tools, pending,
                 localTime = ToolTime.localTimeLabel(now), timeZone = now.zone.id,
             )
-            val response = withRetry { request("POST", "$base/chat", body, 60_000) }
+            // Wyszukiwanie w internecie może trwać dłużej (kilka zapytań i stron) — backend ma limit 70 s na zadanie.
+            val response = withRetry { request("POST", "$base/chat", body, 120_000) }
             when (response.code) {
-                in 200..299 -> ChatProtocol.parseResponse(response.body).let { AiResult.Success(it.text, it.actions) }
+                in 200..299 -> ChatProtocol.parseResponse(response.body).let { AiResult.Success(it.text, it.actions, it.sources) }
                 401, 403 -> AiResult.Failure(FailureReason.UNAUTHORIZED)
                 else -> AiResult.Failure(FailureReason.SERVER, ChatProtocol.parseError(response.body) ?: "HTTP ${response.code}")
             }
