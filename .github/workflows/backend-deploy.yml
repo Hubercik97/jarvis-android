@@ -162,4 +162,7 @@ jobs:
         env:
           BACKEND_URL: ${{ steps.deploy.outputs.url }}
           APP_TOKEN: ${{ secrets.JARVIS_APP_TOKEN }}
+          # Tylko informacja tak/nie (wartość klucza nie trafia do testu).
+          EXPECT_SEARCH: ${{ secrets.TAVILY_API_KEY != '' }}
+          EXPECT_TTS: ${{ secrets.GOOGLE_TTS_API_KEY != '' }}
         run: node smoke.mjs

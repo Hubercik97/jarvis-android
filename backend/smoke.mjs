@@ -126,22 +126,41 @@ if (health.memory) {
   console.log("::warning title=Pamięć::Backend działa bez pamięci (brak przestrzeni KV).");
 }
 
-// Wyszukiwanie w internecie (tylko gdy jest klucz Tavily). Ostrzeżenie zamiast błędu — odpowiedź zależy od modelu.
-if (health.search) {
-  const r = await fetch(url + "/chat", {
-    method: "POST", headers: { ...headers, "content-type": "application/json" },
-    body: JSON.stringify({
-      messages: [{ role: "user", content: "Sprawdź w internecie: jaki jest najnowszy kurs euro według NBP? Podaj źródło." }],
-      tools: [], client,
-    }),
-  });
-  const b = await r.json();
-  const n = Array.isArray(b.sources) ? b.sources.length : 0;
-  if (r.ok && n > 0) {
-    notice("Wyszukiwanie", `źródeł=${n} zapytań=${b.research?.searches} stron=${b.research?.pages} wywołań_modelu=${b.research?.model_calls}`);
-  } else {
-    console.log(`::warning title=Wyszukiwanie::Brak źródeł (HTTP ${r.status}): ${b.error || (b.reply || "").slice(0, 160)}`);
+// Wyszukiwanie w internecie. Gdy sekret TAVILY_API_KEY istnieje, czekamy na nową wersję Workera
+// (sekrety ustawione po wdrożeniu rozchodzą się kilka–kilkadziesiąt sekund), potem PRAWDZIWE wyszukiwanie.
+const expectSearch = process.env.EXPECT_SEARCH === "true";
+if (expectSearch && !health.search) {
+  for (let i = 0; i < 18 && !health.search; i++) {
+    await new Promise((r) => setTimeout(r, 5000));
+    health = await (await call("/health", { headers })).json();
   }
+  if (!health.search) fail("Wyszukiwanie", "Sekret TAVILY_API_KEY jest w GitHub, ale Worker po 90 s nadal zgłasza search=false.");
+}
+if (health.search) {
+  const questions = [
+    "Sprawdź w internecie: jaki jest najnowszy średni kurs euro według NBP? Podaj źródło.",
+    "Wyszukaj w internecie najnowsze wiadomości o Cloudflare Workers i podaj źródła.",
+  ];
+  let ok = false;
+  for (const q of questions) {
+    const r = await fetch(url + "/chat", {
+      method: "POST", headers: { ...headers, "content-type": "application/json" },
+      body: JSON.stringify({ messages: [{ role: "user", content: q }], tools: [], client }),
+    });
+    const b = await r.json();
+    const src = Array.isArray(b.sources) ? b.sources : [];
+    const info = `HTTP ${r.status} zapytań=${b.research?.searches ?? 0} stron=${b.research?.pages ?? 0} wywołań_modelu=${b.research?.model_calls ?? 0} źródeł=${src.length}`;
+    if (r.ok && src.length > 0 && (b.research?.searches ?? 0) > 0) {
+      const withSnippet = src.filter((s) => s.snippet).length;
+      notice("Wyszukiwanie", `${info} (z opisem: ${withSnippet})`);
+      notice("Wyszukiwanie — źródła", src.slice(0, 3).map((s) => `[${s.n}] ${String(s.title).slice(0, 60)} — ${new URL(s.url).hostname}${s.date ? " " + s.date : ""}`).join(" | "));
+      notice("Wyszukiwanie — odpowiedź", String(b.reply).replace(/\s+/g, " ").slice(0, 220));
+      ok = true;
+      break;
+    }
+    console.log(`::warning title=Wyszukiwanie (próba)::${info}: ${b.error || String(b.reply || "").replace(/\s+/g, " ").slice(0, 200)}`);
+  }
+  if (!ok) fail("Wyszukiwanie", "Wyszukiwanie włączone, ale żadna z prób nie zwróciła źródeł z internetu.");
 } else {
   console.log("::notice title=Wyszukiwanie::Wyłączone — brak sekretu TAVILY_API_KEY.");
 }
