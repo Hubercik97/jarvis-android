@@ -6,10 +6,17 @@ import android.os.Handler
 import android.os.Looper
 import android.speech.tts.TextToSpeech
 import android.speech.tts.UtteranceProgressListener
+import android.speech.tts.Voice
+import pl.zamirski.jarvis.settings.AppSettings
 import java.util.Locale
+
+/** Polski głos dostępny w syntezatorze telefonu (Android nie podaje płci — wybór na słuch). */
+data class VoiceOption(val name: String, val label: String, val offline: Boolean)
 
 /** Odpowiedzi głosowe po polsku przez systemowy syntezator mowy (TTS). */
 class VoiceOutput(context: Context, private val listener: Listener) : TextToSpeech.OnInitListener {
+
+    private val settings = AppSettings(context)
 
     enum class Status { INITIALIZING, READY, NO_POLISH, FAILED }
 
@@ -68,9 +75,40 @@ class VoiceOutput(context: Context, private val listener: Listener) : TextToSpee
         main.post { listener.onVoiceStatus(status) }
     }
 
+    /** Polskie głosy zainstalowane w telefonie (Google TTS / Samsung TTS). */
+    fun polishVoices(): List<VoiceOption> {
+        if (status != Status.READY) return emptyList()
+        val voices: Set<Voice> = try {
+            tts.voices ?: emptySet()
+        } catch (e: Exception) {
+            emptySet()
+        }
+        return voices
+            .filter { it.locale.language == "pl" && !it.features.orEmpty().contains(TextToSpeech.Engine.KEY_FEATURE_NOT_INSTALLED) }
+            .sortedWith(compareBy({ it.isNetworkConnectionRequired }, { it.name }))
+            .mapIndexed { i, v ->
+                VoiceOption(v.name, "Głos ${i + 1} — ${v.name}" + if (v.isNetworkConnectionRequired) " (online)" else " (offline)", !v.isNetworkConnectionRequired)
+            }
+    }
+
+    /** Ustawia wybrany głos, tempo i ton z ustawień (wywoływane przed każdą wypowiedzią). */
+    private fun applySettings() {
+        val name = settings.ttsVoice
+        if (name.isNotBlank()) {
+            try {
+                tts.voices?.firstOrNull { it.name == name }?.let { tts.voice = it }
+            } catch (e: Exception) {
+                // Głos zniknął (np. odinstalowany pakiet) — zostaje domyślny polski.
+            }
+        }
+        tts.setSpeechRate(settings.ttsRate)
+        tts.setPitch(settings.ttsPitch)
+    }
+
     /** Zwraca false, gdy mowa nie jest możliwa (brak polskiego głosu lub błąd TTS). */
     fun speak(text: String): Boolean {
         if (status != Status.READY || text.isBlank()) return false
+        applySettings()
         counter += 1
         return tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-$counter") == TextToSpeech.SUCCESS
     }

@@ -110,3 +110,18 @@ for (const [prompt, expected] of [
   if (a && a.tool === expected) notice(`Etap D: ${expected}`, `„${prompt}” → ${JSON.stringify(a.args)}`);
   else console.log(`::warning title=Etap D: ${expected}::„${prompt}” → ${a ? a.tool + " " + JSON.stringify(a.args) : b.error || b.reply || "brak działania"}`);
 }
+
+// Pamięć: dodaj fakt testowy, odczytaj, usuń (nic nie zostaje w pamięci użytkownika).
+if (health.memory) {
+  const add = await (await fetch(url + "/memory", {
+    method: "POST", headers: { ...headers, "content-type": "application/json" },
+    body: JSON.stringify({ text: "Test dymny — do usunięcia" }),
+  })).json();
+  const list = await (await fetch(url + "/memory", { headers })).json();
+  const found = Array.isArray(list.facts) && list.facts.some((f) => f.id === add.fact?.id);
+  const del = await fetch(url + `/memory/${add.fact?.id}`, { method: "DELETE", headers });
+  if (!add.ok || !found || del.status !== 200) fail("Pamięć", `dodanie=${add.ok} odczyt=${found} usunięcie=${del.status}`);
+  notice("Pamięć", `KV działa (dodanie, odczyt, usunięcie OK; zapisanych faktów: ${list.facts.length - 1})`);
+} else {
+  console.log("::warning title=Pamięć::Backend działa bez pamięci (brak przestrzeni KV).");
+}

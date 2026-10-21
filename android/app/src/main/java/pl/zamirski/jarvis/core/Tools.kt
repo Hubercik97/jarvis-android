@@ -62,6 +62,7 @@ object ToolRegistry {
     const val GET_CALENDAR_EVENTS = "get_calendar_events"
     const val FLASHLIGHT = "flashlight"
     const val OPEN_SETTINGS = "open_settings"
+    const val REMEMBER_FACT = "remember_fact"
 
     /** Maks. liczba rund „AI proponuje → telefon wykonuje → AI odpowiada” na jedno polecenie. */
     const val MAX_ROUNDS = 3
@@ -118,6 +119,8 @@ object ToolRegistry {
             OPEN_SETTINGS, "Otwórz ustawienia", ToolRisk.SAFE,
             listOf(ParamSpec("screen", ParamType.ENUM, allowed = SETTINGS_SCREENS)),
         ),
+        // Zapis w pamięci Jarvisa na serwerze — tylko na wyraźną prośbę; widoczne i usuwalne w Ustawieniach.
+        ToolSpec(REMEMBER_FACT, "Zapamiętaj", ToolRisk.SAFE, listOf(ParamSpec("text", ParamType.STRING, maxLength = 200))),
     )
 
     /**
@@ -193,6 +196,7 @@ object ToolRegistry {
             GET_CALENDAR_EVENTS -> a["date"] ?: "dziś"
             FLASHLIGHT -> if (a["on"] == true) "włącz" else "wyłącz"
             OPEN_SETTINGS -> a["screen"]
+            REMEMBER_FACT -> a["text"]
             else -> null
         }
         return if (detail == null) spec.title else "${spec.title}: $detail"

@@ -79,6 +79,31 @@ jobs:
             exit 1
           fi
 
+      # Pamięć Jarvisa: przestrzeń KV „jarvis-backend-test-memory” (darmowa). Tworzona raz, potem używana ponownie.
+      # Brak uprawnień lub błąd API nie blokuje wdrożenia — backend działa wtedy bez pamięci.
+      - name: Przestrzeń KV dla pamięci (test)
+        working-directory: backend
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          set +e
+          API="https://api.cloudflare.com/client/v4/accounts/${CLOUDFLARE_ACCOUNT_ID}/storage/kv/namespaces"
+          TITLE="jarvis-backend-test-memory"
+          ID=$(curl -sS -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" "${API}?per_page=100" \
+            | jq -r --arg t "$TITLE" '.result[]? | select(.title==$t) | .id' | head -1)
+          if [ -z "$ID" ]; then
+            ID=$(curl -sS -X POST -H "Authorization: Bearer ${CLOUDFLARE_API_TOKEN}" -H "Content-Type: application/json" \
+              --data "{\"title\":\"${TITLE}\"}" "$API" | jq -r '.result.id // empty')
+            [ -n "$ID" ] && echo "::notice title=Pamięć::Utworzono przestrzeń KV ${TITLE}"
+          fi
+          if [ -z "$ID" ]; then
+            echo "::warning title=Pamięć::Nie udało się utworzyć/odczytać przestrzeni KV — backend zostanie wdrożony bez pamięci."
+            exit 0
+          fi
+          printf '\n[[env.test.kv_namespaces]]\nbinding = "MEMORY"\nid = "%s"\n' "$ID" >> wrangler.toml
+          echo "::notice title=Pamięć::Przestrzeń KV podpięta jako MEMORY"
+
       - name: Wdróż Worker (test)
         id: deploy
         working-directory: backend

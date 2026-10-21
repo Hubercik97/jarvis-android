@@ -38,6 +38,21 @@ class AppSettings(context: Context) {
         get() = prefs.getBoolean(KEY_BG, false)
         set(value) = prefs.edit().putBoolean(KEY_BG, value).apply()
 
+    /** Wybrany głos syntezatora (nazwa z TextToSpeech.voices); pusty = domyślny polski. */
+    var ttsVoice: String
+        get() = prefs.getString(KEY_TTS_VOICE, "") ?: ""
+        set(value) = prefs.edit().putString(KEY_TTS_VOICE, value).apply()
+
+    /** Tempo mowy 0.7–1.4 (1.0 = normalne). */
+    var ttsRate: Float
+        get() = prefs.getFloat(KEY_TTS_RATE, 1.0f)
+        set(value) = prefs.edit().putFloat(KEY_TTS_RATE, value.coerceIn(0.7f, 1.4f)).apply()
+
+    /** Ton 0.6–1.3 (niżej = głębszy, „męski” głos). */
+    var ttsPitch: Float
+        get() = prefs.getFloat(KEY_TTS_PITCH, 0.95f)
+        set(value) = prefs.edit().putFloat(KEY_TTS_PITCH, value.coerceIn(0.6f, 1.3f)).apply()
+
     /** Miasto dla pogody; puste = przybliżona lokalizacja telefonu. */
     var weatherCity: String
         get() = prefs.getString(KEY_CITY, "") ?: ""
@@ -51,5 +66,8 @@ class AppSettings(context: Context) {
         const val KEY_HANDS_FREE = "hands_free"
         const val KEY_BT_MIC = "bluetooth_mic"
         const val KEY_BG = "background_listening"
+        const val KEY_TTS_VOICE = "tts_voice"
+        const val KEY_TTS_RATE = "tts_rate"
+        const val KEY_TTS_PITCH = "tts_pitch"
     }
 }

@@ -47,6 +47,14 @@ import pl.zamirski.jarvis.ui.components.SectionLabel
 import pl.zamirski.jarvis.ui.theme.JColors
 import pl.zamirski.jarvis.voice.VoiceOutput
 import pl.zamirski.jarvis.service.WakeWordService
+import androidx.compose.foundation.clickable
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Slider
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.rememberCoroutineScope
+import kotlinx.coroutines.launch
+import pl.zamirski.jarvis.core.MemoryState
 import android.content.Intent
 import android.net.Uri
 import android.os.Build
@@ -177,6 +185,12 @@ fun SettingsScreen(vm: JarvisViewModel, actions: AppActions, onBack: () -> Unit)
                         "Czy usługa rozpoznawania mowy Google używa mikrofonu słuchawek, zależy od telefonu — sprawdź na S21.",
                 )
             }
+
+            SectionLabel("Głos Jarvisa")
+            VoiceChoiceCard(vm)
+
+            SectionLabel("Pamięć Jarvisa")
+            MemoryCard(vm)
 
             SectionLabel("Słuchanie w tle")
             BackgroundListeningCard(vm, actions)
@@ -326,6 +340,135 @@ private fun BackgroundListeningCard(vm: JarvisViewModel, actions: AppActions) {
         Spacer(Modifier.height(6.dp))
         InfoText("Samsung usypia aplikacje w tle. Ustaw: Bateria → Bez ograniczeń.")
         OutlinedButton(onClick = actions.openAppSettings) { Text("Otwórz ustawienia baterii Jarvisa") }
+    }
+}
+
+/** Wybór polskiego głosu, tempa i tonu (niższy ton = głębszy głos). Android nie podaje płci głosu — wybór na słuch. */
+@Composable
+private fun VoiceChoiceCard(vm: JarvisViewModel) {
+    var voices by remember { mutableStateOf(vm.polishVoices()) }
+    var selected by remember { mutableStateOf(vm.settings.ttsVoice) }
+    var rate by remember { mutableStateOf(vm.settings.ttsRate) }
+    var pitch by remember { mutableStateOf(vm.settings.ttsPitch) }
+    LaunchedEffect(vm.voiceStatus) { voices = vm.polishVoices() }
+
+    GlassCard(Modifier.fillMaxWidth()) {
+        if (voices.isEmpty()) {
+            InfoText("Brak danych o głosach — syntezator jeszcze się uruchamia albo nie ma polskich głosów.")
+        } else {
+            VoiceRow("Domyślny polski głos", selected.isBlank()) {
+                selected = ""
+                vm.settings.ttsVoice = ""
+            }
+            voices.forEach { v ->
+                VoiceRow(v.label, selected == v.name) {
+                    selected = v.name
+                    vm.settings.ttsVoice = v.name
+                    vm.previewVoice()
+                }
+            }
+        }
+        Spacer(Modifier.height(8.dp))
+        Text("Tempo: ${"%.2f".format(rate)}", color = JColors.Text, fontSize = 14.sp)
+        Slider(value = rate, onValueChange = { rate = it }, valueRange = 0.7f..1.4f, onValueChangeFinished = { vm.settings.ttsRate = rate })
+        Text("Ton: ${"%.2f".format(pitch)} (niżej = głębszy, męski)", color = JColors.Text, fontSize = 14.sp)
+        Slider(value = pitch, onValueChange = { pitch = it }, valueRange = 0.6f..1.3f, onValueChangeFinished = { vm.settings.ttsPitch = pitch })
+        OutlinedButton(onClick = { vm.previewVoice() }) { Text("Odsłuchaj") }
+        InfoText(
+            "Więcej głosów: Ustawienia telefonu → Zarządzanie ogólne → Zamiana tekstu na mowę → silnik Google → " +
+                "Zainstaluj dane głosowe → polski. Głosy „online” brzmią naturalniej, ale wymagają internetu.",
+        )
+    }
+}
+
+@Composable
+private fun VoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable(onClick = onClick), verticalAlignment = Alignment.CenterVertically) {
+        RadioButton(selected = selected, onClick = onClick)
+        Text(label, color = JColors.Text, fontSize = 14.sp)
+    }
+}
+
+/** Fakty zapamiętane na serwerze — podgląd i usuwanie (pojedynczo lub wszystkie). */
+@Composable
+private fun MemoryCard(vm: JarvisViewModel) {
+    val scope = rememberCoroutineScope()
+    var state by remember { mutableStateOf<MemoryState?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    var loading by remember { mutableStateOf(false) }
+    var confirmClear by remember { mutableStateOf(false) }
+
+    fun reload() {
+        loading = true
+        scope.launch {
+            try {
+                state = vm.memoryClient.list()
+                error = null
+            } catch (e: Exception) {
+                error = e.message ?: "Błąd połączenia"
+            } finally {
+                loading = false
+            }
+        }
+    }
+    LaunchedEffect(Unit) { reload() }
+
+    GlassCard(Modifier.fillMaxWidth()) {
+        InfoText(
+            "Jarvis zapamiętuje tylko to, o co wyraźnie poprosisz („Jarvis, zapamiętaj, że…”). " +
+                "Fakty są na Twoim serwerze (Cloudflare KV) i trafiają do AI przy każdej rozmowie.",
+        )
+        Spacer(Modifier.height(6.dp))
+        val s = state
+        when {
+            loading -> InfoText("Wczytuję…")
+            error != null -> InfoText(error!!, JColors.Warning)
+            s == null -> InfoText("Brak danych")
+            !s.enabled -> InfoText("Pamięć jest wyłączona na serwerze (brak przestrzeni KV).", JColors.Warning)
+            s.facts.isEmpty() -> InfoText("Nic jeszcze nie zapamiętano.")
+            else -> s.facts.forEach { f ->
+                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                    Text("• ${f.text}", color = JColors.Text, fontSize = 14.sp, modifier = Modifier.weight(1f))
+                    TextButton(onClick = {
+                        scope.launch {
+                            try {
+                                vm.memoryClient.delete(f.id)
+                            } catch (e: Exception) {
+                                error = e.message
+                            }
+                            reload()
+                        }
+                    }) { Text("Usuń") }
+                }
+            }
+        }
+        Row {
+            OutlinedButton(onClick = { reload() }) { Text("Odśwież") }
+            Spacer(Modifier.width(8.dp))
+            if (s != null && s.facts.isNotEmpty()) OutlinedButton(onClick = { confirmClear = true }) { Text("Usuń wszystko") }
+        }
+    }
+
+    if (confirmClear) {
+        AlertDialog(
+            onDismissRequest = { confirmClear = false },
+            title = { Text("Usunąć całą pamięć?") },
+            text = { Text("Wszystkie zapamiętane fakty zostaną trwale usunięte z serwera.") },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmClear = false
+                    scope.launch {
+                        try {
+                            vm.memoryClient.clear()
+                        } catch (e: Exception) {
+                            error = e.message
+                        }
+                        reload()
+                    }
+                }) { Text("Usuń") }
+            },
+            dismissButton = { TextButton(onClick = { confirmClear = false }) { Text("Anuluj") } },
+        )
     }
 }
 

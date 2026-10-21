@@ -10,6 +10,8 @@
 //
 // Worker niczego nie loguje — ani treści rozmów, ani nagłówków, ani kluczy.
 
+import { handleMemory, loadFacts, memoryPrompt } from "./memory.js";
+
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 export const DEFAULT_MODEL = "claude-haiku-5-5";
 export const MAX_MESSAGES = 20;
@@ -156,7 +158,61 @@ export const TOOL_DEFS = {
       additionalProperties: false,
     },
   },
+  remember_fact: {
+    description:
+      "Zapamiętuje trwale krótką informację o użytkowniku (np. „mój samochód to Skoda Octavia”). Używaj WYŁĄCZNIE, gdy " +
+      "użytkownik wyraźnie prosi, żeby coś zapamiętać. Nie zapisuj haseł, numerów kart ani danych innych osób bez prośby.",
+    input_schema: {
+      type: "object",
+      properties: { text: { type: "string", maxLength: 200, description: "Informacja w jednym zdaniu, w 2. osobie." } },
+      required: ["text"],
+      additionalProperties: false,
+    },
+  },
 };
+
+// ---------- Limit zapytań (ochrona portfela przy wycieku tokenu) ----------
+// Licznik w pamięci jednej instancji Workera: tani i bez zapisu w KV, ale nie globalny.
+// Twardą granicą kosztów jest miesięczny limit wydatków ustawiony w konsoli Anthropic.
+export const RATE_LIMIT = 40; // zapytań /chat na minutę na instancję
+const rateWindow = [];
+export function rateLimited(now = Date.now()) {
+  while (rateWindow.length && now - rateWindow[0] > 60_000) rateWindow.shift();
+  if (rateWindow.length >= RATE_LIMIT) return true;
+  rateWindow.push(now);
+  return false;
+}
+export function resetRateLimit() {
+  rateWindow.length = 0;
+}
+
+// ---------- Wywołanie modelu z ponowieniem ----------
+const RETRY_STATUSES = new Set([429, 500, 502, 503, 529]);
+export const RETRY_DELAY_MS = { value: 700 };
+
+/** Jedno ponowienie przy przeciążeniu/błędzie dostawcy lub sieci. Zwraca Response albo rzuca błąd sieci. */
+export async function callModel(apiKey, payload) {
+  let lastError;
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const res = await fetch(ANTHROPIC_URL, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+        body: JSON.stringify(payload),
+      });
+      if (attempt === 0 && RETRY_STATUSES.has(res.status)) {
+        const after = Number(res.headers.get("retry-after"));
+        await new Promise((r) => setTimeout(r, after > 0 && after <= 3 ? after * 1000 : RETRY_DELAY_MS.value));
+        continue;
+      }
+      return res;
+    } catch (e) {
+      lastError = e;
+      if (attempt === 0) await new Promise((r) => setTimeout(r, RETRY_DELAY_MS.value));
+    }
+  }
+  throw lastError || new Error("upstream");
+}
 
 /** Kontekst czasu z telefonu (model nie zna aktualnej daty). Zwraca zdanie do instrukcji albo "". */
 export function timeContext(client) {
@@ -374,24 +430,19 @@ async function handleChat(request, env) {
   const pending = parsePending(body.pending, tools);
   if (pending && pending.error) return json({ error: pending.error }, 400);
 
+  if (rateLimited()) return json({ error: "Za dużo zapytań — spróbuj za chwilę" }, 429);
+  const facts = await loadFacts(env);
+
   let upstream;
   try {
-    upstream = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": apiKey,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: env.MODEL || DEFAULT_MODEL,
-        max_tokens: 600,
-        system: [SYSTEM_PROMPT, tools.length ? TOOLS_PROMPT : "", timeContext(body.client)].filter(Boolean).join(" "),
-        messages: withToolResults(toModelMessages(messages), pending),
-        ...(tools.length
-          ? { tools: tools.map((name) => ({ name, description: TOOL_DEFS[name].description, input_schema: TOOL_DEFS[name].input_schema })) }
-          : {}),
-      }),
+    upstream = await callModel(apiKey, {
+      model: env.MODEL || DEFAULT_MODEL,
+      max_tokens: 600,
+      system: [SYSTEM_PROMPT, tools.length ? TOOLS_PROMPT : "", timeContext(body.client), memoryPrompt(facts)].filter(Boolean).join(" "),
+      messages: withToolResults(toModelMessages(messages), pending),
+      ...(tools.length
+        ? { tools: tools.map((name) => ({ name, description: TOOL_DEFS[name].description, input_schema: TOOL_DEFS[name].input_schema })) }
+        : {}),
     });
   } catch (e) {
     // Tylko typ błędu (np. TypeError) — bez treści, która mogłaby zawierać fragment klucza.
@@ -429,7 +480,14 @@ export default {
         key_format_ok: isHeaderSafe(cleanSecret(env.ANTHROPIC_API_KEY)),
         model: env.MODEL || DEFAULT_MODEL,
         auth: authState(request, env),
+        memory: Boolean(env.MEMORY),
       });
+    }
+    if (url.pathname === "/memory" || url.pathname.startsWith("/memory/")) {
+      const auth = authState(request, env);
+      if (auth === "missing") return json({ error: "Serwer nie ma skonfigurowanego tokenu aplikacji" }, 503);
+      if (auth !== "ok") return json({ error: "Nieprawidłowy token aplikacji" }, 401);
+      return handleMemory(request, env, url, json);
     }
     if (url.pathname === "/chat" && request.method === "POST") {
       return handleChat(request, env);

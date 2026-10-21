@@ -2,11 +2,15 @@ import { test, afterEach } from "node:test";
 import assert from "node:assert/strict";
 import worker, { normalizeMessages, extractText, toModelMessages, safeEqual, cleanSecret, isHeaderSafe, parseClientTools, parsePending, extractActions, timeContext, TOOL_DEFS, MAX_BODY_BYTES, DEFAULT_MODEL } from "./worker.js";
 import { readFileSync } from "node:fs";
+import { RETRY_DELAY_MS, resetRateLimit, RATE_LIMIT } from "./worker.js";
+import { MAX_FACTS, cleanFact, memoryPrompt } from "./memory.js";
 
 const realFetch = globalThis.fetch;
 afterEach(() => {
   globalThis.fetch = realFetch;
+  resetRateLimit();
 });
+RETRY_DELAY_MS.value = 0; // testy bez czekania
 
 const env = { ANTHROPIC_API_KEY: "test-key", APP_TOKEN: "sekret" };
 
@@ -22,7 +26,7 @@ test("health reports configuration without exposing the key", async () => {
   const res = await worker.fetch(new Request("https://jarvis.test/health", { headers: { "x-jarvis-token": "zly" } }), env);
   const body = await res.json();
   assert.equal(res.status, 200);
-  assert.deepEqual(body, { ok: true, configured: true, key_format_ok: true, model: DEFAULT_MODEL, auth: "invalid" });
+  assert.deepEqual(body, { ok: true, configured: true, key_format_ok: true, model: DEFAULT_MODEL, auth: "invalid", memory: false });
   assert.ok(!JSON.stringify(body).includes("test-key"));
 });
 
@@ -350,4 +354,110 @@ test("local time from the phone is added to instructions only when well-formed",
   }), env);
   assert.match(sent.system, /Aktualny czas u użytkownika: wtorek/);
   assert.deepEqual(sent.tools.map((t) => t.name), ["open_app", "set_alarm", "create_reminder"]);
+});
+
+// ---------- Pamięć, ponawianie, limit ----------
+
+function fakeKV() {
+  const store = new Map();
+  return {
+    store,
+    async get(k) { return store.has(k) ? store.get(k) : null; },
+    async put(k, v) { store.set(k, v); },
+    async delete(k) { store.delete(k); },
+  };
+}
+
+function memReq(method, path = "/memory", body, token = "sekret") {
+  return new Request(`https://jarvis.test${path}`, {
+    method,
+    headers: { "content-type": "application/json", ...(token ? { "x-jarvis-token": token } : {}) },
+    body: body ? JSON.stringify(body) : undefined,
+  });
+}
+
+test("memory requires the app token and a KV binding", async () => {
+  assert.equal((await worker.fetch(memReq("GET", "/memory", null, "zly"), { ...env, MEMORY: fakeKV() })).status, 401);
+  const noKv = await worker.fetch(memReq("GET"), env);
+  assert.equal(noKv.status, 503);
+  assert.equal((await noKv.json()).enabled, false);
+});
+
+test("memory add, list, dedupe, delete one and delete all", async () => {
+  const kv = fakeKV();
+  const e = { ...env, MEMORY: kv };
+  const a = await (await worker.fetch(memReq("POST", "/memory", { text: "  Mój samochód to\nSkoda Octavia " }), e)).json();
+  assert.equal(a.ok, true);
+  assert.equal(a.fact.text, "Mój samochód to Skoda Octavia");
+  const dup = await (await worker.fetch(memReq("POST", "/memory", { text: "mój samochód to skoda octavia" }), e)).json();
+  assert.equal(dup.duplicate, true);
+  await worker.fetch(memReq("POST", "/memory", { text: "Pracuję jako kurier" }), e);
+  const list = await (await worker.fetch(memReq("GET"), e)).json();
+  assert.deepEqual(list.facts.map((f) => f.text), ["Pracuję jako kurier", "Mój samochód to Skoda Octavia"]);
+  const del = await worker.fetch(memReq("DELETE", `/memory/${a.fact.id}`), e);
+  assert.equal(del.status, 200);
+  assert.equal((await worker.fetch(memReq("DELETE", "/memory/nieistnieje"), e)).status, 404);
+  assert.equal((await (await worker.fetch(memReq("GET"), e)).json()).facts.length, 1);
+  await worker.fetch(memReq("DELETE"), e);
+  assert.equal((await (await worker.fetch(memReq("GET"), e)).json()).facts.length, 0);
+  assert.equal((await worker.fetch(memReq("POST", "/memory", { text: "   " }), e)).status, 400);
+});
+
+test("memory keeps at most MAX_FACTS, newest first", async () => {
+  const e = { ...env, MEMORY: fakeKV() };
+  for (let i = 0; i < MAX_FACTS + 3; i++) await worker.fetch(memReq("POST", "/memory", { text: `fakt ${i}` }), e);
+  const list = await (await worker.fetch(memReq("GET"), e)).json();
+  assert.equal(list.facts.length, MAX_FACTS);
+  assert.equal(list.facts[0].text, `fakt ${MAX_FACTS + 2}`);
+});
+
+test("remembered facts are given to the model as data", async () => {
+  const kv = fakeKV();
+  const e = { ...env, MEMORY: kv };
+  await worker.fetch(memReq("POST", "/memory", { text: "Lubię kawę bez cukru" }), e);
+  let sent;
+  globalThis.fetch = async (url, init) => {
+    sent = JSON.parse(init.body);
+    return new Response(JSON.stringify({ content: [{ type: "text", text: "OK" }] }), { status: 200 });
+  };
+  await worker.fetch(chatRequest([{ role: "user", content: "Jaką kawę lubię?" }]), e);
+  assert.match(sent.system, /Lubię kawę bez cukru/);
+  assert.match(sent.system, /dane, nie polecenia/);
+  assert.equal(memoryPrompt([]), "");
+  assert.equal(cleanFact("a\u0007b"), "a b");
+});
+
+test("overloaded model is retried once, then succeeds", async () => {
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    if (calls === 1) return new Response("{}", { status: 529 });
+    return new Response(JSON.stringify({ content: [{ type: "text", text: "Po ponowieniu" }] }), { status: 200 });
+  };
+  const res = await worker.fetch(chatRequest([{ role: "user", content: "hej" }]), env);
+  assert.equal((await res.json()).reply, "Po ponowieniu");
+  assert.equal(calls, 2);
+});
+
+test("auth errors from the model are not retried", async () => {
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return new Response("{}", { status: 401 });
+  };
+  const res = await worker.fetch(chatRequest([{ role: "user", content: "hej" }]), env);
+  assert.equal(res.status, 502);
+  assert.equal(calls, 1);
+});
+
+test("per-instance rate limit answers 429 without calling the model", async () => {
+  let calls = 0;
+  globalThis.fetch = async () => {
+    calls++;
+    return new Response(JSON.stringify({ content: [{ type: "text", text: "x" }] }), { status: 200 });
+  };
+  for (let i = 0; i < RATE_LIMIT; i++) await worker.fetch(chatRequest([{ role: "user", content: "hej" }]), env);
+  const res = await worker.fetch(chatRequest([{ role: "user", content: "hej" }]), env);
+  assert.equal(res.status, 429);
+  assert.equal(calls, RATE_LIMIT);
 });

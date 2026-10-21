@@ -34,7 +34,10 @@ class ToolsTest {
     fun `unknown tools always require confirmation and only known tools are offered`() {
         assertTrue(ToolRegistry.needsConfirmation(call("send_sms")))
         assertEquals(
-            listOf("open_app", "set_alarm", "set_timer", "create_reminder", "add_calendar_event", "get_calendar_events", "flashlight", "open_settings"),
+            listOf(
+                "open_app", "set_alarm", "set_timer", "create_reminder", "add_calendar_event", "get_calendar_events",
+                "flashlight", "open_settings", "remember_fact",
+            ),
             ToolRegistry.names,
         )
         assertTrue(ToolRegistry.specs.all { it.risk == ToolRisk.SAFE }) // etapy A i D: nic nie wysyła ani nie usuwa
@@ -105,6 +108,7 @@ class ToolsTest {
         assertEquals("Ustaw minutnik: 1 godz. 30 min", ToolRegistry.describe(call(ToolRegistry.SET_TIMER, "seconds" to 5400)))
         assertEquals("Latarka: włącz", ToolRegistry.describe(call(ToolRegistry.FLASHLIGHT, "on" to true)))
         assertEquals("Sprawdź kalendarz: dziś", ToolRegistry.describe(call(ToolRegistry.GET_CALENDAR_EVENTS)))
+        assertEquals("Zapamiętaj: Mój samochód to Skoda", ToolRegistry.describe(call(ToolRegistry.REMEMBER_FACT, "text" to "Mój samochód to Skoda")))
     }
 
     @Test

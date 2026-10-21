@@ -21,6 +21,9 @@ import pl.zamirski.jarvis.core.ToolValidation
 import pl.zamirski.jarvis.data.CalendarRepository
 import pl.zamirski.jarvis.data.LocalStore
 import pl.zamirski.jarvis.data.ReminderScheduler
+import pl.zamirski.jarvis.core.ProtocolException
+import pl.zamirski.jarvis.net.BackendMemoryClient
+import pl.zamirski.jarvis.settings.AppSettings
 import java.time.Instant
 import java.time.ZoneId
 import java.time.ZonedDateTime
@@ -34,6 +37,7 @@ class LocalToolExecutor(context: Context) {
     private val app = context.applicationContext
     private val store = LocalStore.get(app)
     private val calendar = CalendarRepository(app)
+    private val memory = BackendMemoryClient(AppSettings(app))
 
     suspend fun execute(call: ToolCall): ToolResult {
         val a = when (val v = ToolRegistry.validate(call)) {
@@ -51,8 +55,13 @@ class LocalToolExecutor(context: Context) {
                 ToolRegistry.GET_CALENDAR_EVENTS -> calendarEvents(id, a["date"] as String?, a["days"] as Int? ?: 1)
                 ToolRegistry.FLASHLIGHT -> flashlight(id, a["on"] as Boolean)
                 ToolRegistry.OPEN_SETTINGS -> openSettings(id, a["screen"] as String)
+                ToolRegistry.REMEMBER_FACT -> ToolResult(id, true, memory.add(a["text"] as String))
                 else -> ToolResult(id, false, "Narzędzie niedostępne na tym telefonie")
             }
+        } catch (e: ProtocolException) {
+            ToolResult(id, false, e.message ?: "Błąd serwera")
+        } catch (e: java.io.IOException) {
+            ToolResult(id, false, e.message ?: "Brak połączenia z serwerem")
         } catch (e: SecurityException) {
             ToolResult(id, false, "Android nie pozwolił wykonać tego działania")
         } catch (e: ActivityNotFoundException) {

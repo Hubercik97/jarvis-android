@@ -104,5 +104,8 @@ model **proponuje** wywołanie (`actions`), a aplikacja:
 | `get_calendar_events` | bez potwierdzenia | `READ_CALENDAR` (zgoda w ekranie Kalendarz) | Tytuły i godziny wydarzeń trafiają do AI tylko na Twoje polecenie |
 | `flashlight` | bez potwierdzenia | brak | |
 | `open_settings` | bez potwierdzenia | brak | Tylko otwiera ekran — Android nie pozwala aplikacjom przełączać Wi-Fi/Bluetooth |
+| `remember_fact` | bez potwierdzenia, tylko na wyraźną prośbę | brak | Fakt trafia do pamięci na serwerze (KV); podgląd i usuwanie w Ustawieniach → Pamięć Jarvisa |
 
 Aplikacja wysyła z każdym poleceniem czas lokalny i strefę telefonu (`client.local_time`, `client.tz`), bo model nie zna aktualnej daty.
+
+Architektura chmury, pamięć, koszty i limity: [CLOUD.md](CLOUD.md).

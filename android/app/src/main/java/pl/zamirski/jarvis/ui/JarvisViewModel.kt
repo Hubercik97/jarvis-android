@@ -438,6 +438,17 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
 
     // ---------- Głos ----------
 
+    fun polishVoices() = voice.polishVoices()
+
+    /** Odsłuch próbki wybranego głosu (bez zapisu w rozmowie). */
+    fun previewVoice() {
+        if (mode == VoiceMode.IDLE) voice.speak("Dzień dobry, tu Jarvis. Tak będę brzmiał w odpowiedziach.")
+    }
+
+    // ---------- Pamięć na serwerze ----------
+
+    val memoryClient = pl.zamirski.jarvis.net.BackendMemoryClient(settings)
+
     override fun onVoiceStatus(status: VoiceOutput.Status) {
         voiceStatus = status
     }
