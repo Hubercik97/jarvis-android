@@ -15,6 +15,33 @@ export const BUDGET = {
 };
 const SNIPPET_CHARS = 600;
 const PAGE_CHARS = 6_000;
+/** Krótki opis wyniku zwracany aplikacji (lista źródeł). */
+const SOURCE_SNIPPET_CHARS = 200;
+export const MAX_RESULTS = 5;
+export const QUERY_MIN = 2;
+export const QUERY_MAX = 300;
+/** Limit czasu jednego zapytania do Tavily (bez ponawiania po przekroczeniu — oszczędza czas i kredyty). */
+export const LIMITS = { requestTimeoutMs: 12_000 };
+
+/**
+ * Walidacja zapytania od modelu. Zwraca {query} albo {error}.
+ * Odrzuca: puste/za krótkie/za długie, znaki sterujące, sam adres URL (do tego jest read_page)
+ * oraz zapytania zawierające sekrety serwera (klucz nie może wyjść w treści zapytania).
+ */
+export function validateQuery(raw, env = {}) {
+  if (typeof raw !== "string") return { error: "Zapytanie musi być tekstem." };
+  if (/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/.test(raw)) return { error: "Zapytanie zawiera niedozwolone znaki." };
+  const query = raw.replace(/\s+/g, " ").trim();
+  if (query.length < QUERY_MIN) return { error: "Zapytanie jest puste lub za krótkie." };
+  if (query.length > QUERY_MAX) return { error: `Zapytanie jest za długie (maks. ${QUERY_MAX} znaków) — skróć je.` };
+  if (/^https?:\/\/\S+$/i.test(query)) return { error: "To jest adres strony — użyj read_page zamiast web_search." };
+  for (const name of ["TAVILY_API_KEY", "ANTHROPIC_API_KEY", "APP_TOKEN", "GOOGLE_TTS_API_KEY"]) {
+    const v = typeof env[name] === "string" ? env[name].trim() : "";
+    if (v.length >= 8 && query.includes(v)) return { error: "Zapytanie odrzucone: zawiera dane poufne." };
+  }
+  if (/\b(sk-ant-|tvly-)[A-Za-z0-9_-]{6,}/.test(query)) return { error: "Zapytanie odrzucone: wygląda na klucz API." };
+  return { query };
+}
 
 export const SERVER_TOOL_DEFS = {
   web_search: {
@@ -68,16 +95,25 @@ export function newResearch(now = Date.now()) {
 }
 
 /** Numer źródła dla adresu (ten sam adres = ten sam numer). */
-export function sourceNumber(state, url, title, date) {
+export function sourceNumber(state, url, title, date, snippet) {
   const found = state.sources.find((s) => s.url === url);
   if (found) {
     if (!found.title && title) found.title = title;
     if (!found.date && date) found.date = date;
+    if (!found.snippet && snippet) found.snippet = snippet;
     return found.n;
   }
   const n = state.sources.length + 1;
-  state.sources.push({ n, url, title: title || url, date: date || null });
+  state.sources.push({ n, url, title: title || url, date: date || null, snippet: snippet || "" });
   return n;
+}
+
+/** Krótki opis do listy źródeł: jeden wiersz, bez znaczników, ucięty na granicy słowa. */
+export function shortSnippet(text) {
+  const t = String(text || "").replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim();
+  if (t.length <= SOURCE_SNIPPET_CHARS) return t;
+  const cut = t.slice(0, SOURCE_SNIPPET_CHARS);
+  return cut.slice(0, Math.max(cut.lastIndexOf(" "), SOURCE_SNIPPET_CHARS - 40)).trim() + "…";
 }
 
 export function budgetExhausted(state, now = Date.now()) {
@@ -108,18 +144,32 @@ function untrusted(label, body) {
 async function tavily(env, endpoint, payload) {
   let res;
   for (let attempt = 0; attempt < 2; attempt++) {
-    res = await fetch(endpoint, {
-      method: "POST",
-      headers: { "content-type": "application/json", authorization: `Bearer ${env.TAVILY_API_KEY.trim()}` },
-      body: JSON.stringify(payload),
-    });
+    try {
+      res = await fetch(endpoint, {
+        method: "POST",
+        headers: { "content-type": "application/json", authorization: `Bearer ${env.TAVILY_API_KEY.trim()}` },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(LIMITS.requestTimeoutMs),
+      });
+    } catch (e) {
+      const name = e && e.name;
+      if (name === "TimeoutError" || name === "AbortError") throw new Error("wyszukiwarka nie odpowiedziała w wyznaczonym czasie");
+      if (attempt === 0) continue; // chwilowy błąd sieci — jedna ponowna próba
+      throw new Error("brak połączenia z wyszukiwarką");
+    }
     if (res.status !== 429 && res.status < 500) break;
     if (attempt === 0) await new Promise((r) => setTimeout(r, 600));
   }
+  // Treści odpowiedzi błędu nie przekazujemy dalej (może zawierać szczegóły konta).
   if (res.status === 401 || res.status === 403) throw new Error("wyszukiwarka odrzuciła klucz API");
   if (res.status === 429 || res.status === 432 || res.status === 433) throw new Error("wyczerpany limit wyszukiwarki");
+  if (res.status === 400) throw new Error("wyszukiwarka odrzuciła zapytanie");
   if (!res.ok) throw new Error(`wyszukiwarka zwróciła błąd ${res.status}`);
-  return res.json();
+  try {
+    return await res.json();
+  } catch {
+    throw new Error("nieczytelna odpowiedź wyszukiwarki");
+  }
 }
 
 /** Wykonuje narzędzie serwerowe. Zwraca {content, isError}. Nigdy nie rzuca. */
@@ -127,21 +177,22 @@ export async function runServerTool(env, state, name, input) {
   try {
     if (name === "web_search") {
       if (state.searches >= BUDGET.searches) return { content: "Limit wyszukiwań dla tego zadania wyczerpany — odpowiedz na podstawie zebranych informacji.", isError: true };
-      const query = String(input?.query || "").trim().slice(0, 300);
-      if (!query) return { content: "Puste zapytanie.", isError: true };
+      const checked = validateQuery(input?.query, env);
+      if (checked.error) return { content: checked.error, isError: true }; // nie zużywa budżetu ani kredytów
+      const query = checked.query;
       state.searches++;
       const topic = input?.topic === "news" ? "news" : "general";
-      const payload = { query, topic, search_depth: "basic", max_results: 5, include_published_date: true };
+      const payload = { query, topic, search_depth: "basic", max_results: MAX_RESULTS, include_published_date: true };
       if (["day", "week", "month", "year"].includes(input?.time_range)) payload.time_range = input.time_range;
       const data = await tavily(env, TAVILY_SEARCH, payload);
       const results = Array.isArray(data?.results) ? data.results : [];
       if (!results.length) return { content: `Brak wyników dla: ${query}`, isError: false };
-      const lines = results.map((r) => {
+      const lines = results.slice(0, MAX_RESULTS).map((r) => {
         const url = safeUrl(r.url);
         if (!url) return null;
         const date = typeof r.published_date === "string" && r.published_date ? r.published_date.slice(0, 10) : null;
-        const n = sourceNumber(state, url, String(r.title || "").slice(0, 200), date);
         const snippet = String(r.content || "").replace(/\s+/g, " ").slice(0, SNIPPET_CHARS);
+        const n = sourceNumber(state, url, String(r.title || "").replace(/\s+/g, " ").slice(0, 200), date, shortSnippet(r.content));
         return `[${n}] ${r.title || url}\nAdres: ${url}\nData: ${date || "nieznana"}\nFragment: ${snippet}`;
       }).filter(Boolean);
       return { content: untrusted(`Wyniki wyszukiwania dla: ${query}`, lines.join("\n\n")), isError: false };

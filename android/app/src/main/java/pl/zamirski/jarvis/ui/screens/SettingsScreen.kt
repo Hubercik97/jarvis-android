@@ -95,7 +95,7 @@ fun SettingsScreen(vm: JarvisViewModel, actions: AppActions, onBack: () -> Unit)
                     VoiceOutput.Status.INITIALIZING -> Text("⏳ Głos polski: sprawdzanie…", color = JColors.TextDim, fontSize = 14.sp)
                 }
                 vm.backendFeatures?.let { f ->
-                    StatusLine(f.search, "Wyszukiwanie w internecie", "włączone (Tavily)", "wyłączone — brak klucza wyszukiwarki na serwerze")
+                    StatusLine(f.search, "Wyszukiwanie w internecie", "klucz Tavily ustawiony na serwerze", "wyłączone — brak klucza wyszukiwarki na serwerze")
                     StatusLine(f.memory, "Pamięć w chmurze", "włączona", "wyłączona")
                 }
                 when (val c = vm.connection) {

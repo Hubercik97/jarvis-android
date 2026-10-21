@@ -50,7 +50,8 @@ object ChatProtocol {
         }
         val array = JSONArray()
         messages.forEachIndexed { index, m ->
-            val item = JSONObject().put("role", m.kind.wire).put("content", m.text.trim())
+            val content = if (m.kind == Kind.ASSISTANT) Sources.forModel(m.text) else m.text
+            val item = JSONObject().put("role", m.kind.wire).put("content", content.trim())
             // Zdjęcie wysyłamy tylko z ostatnią wiadomością — starsze nie są potrzebne i obciążałyby łącze.
             if (index == messages.lastIndex && m.kind == Kind.USER && !m.imageBase64.isNullOrBlank()) {
                 item.put("image", JSONObject().put("media_type", "image/jpeg").put("data", m.imageBase64))
@@ -114,6 +115,7 @@ object ChatProtocol {
                     o.optString("title", url).take(200),
                     url,
                     o.optString("date", "").takeIf { Regex("^\\d{4}-\\d{2}-\\d{2}$").matches(it) },
+                    o.optString("snippet", "").replace(Regex("\\s+"), " ").trim().take(200),
                 )
             }
         }

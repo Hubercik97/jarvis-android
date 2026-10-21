@@ -205,6 +205,11 @@ fun MessageBubble(m: ChatMessage) {
                             .padding(top = 4.dp)
                             .clickable { runCatching { uri.openUri(s.url) } },
                     )
+                    val host = runCatching { java.net.URI(s.url).host?.removePrefix("www.") }.getOrNull()
+                    val caption = listOfNotNull(host, s.snippet.takeIf { it.isNotBlank() }).joinToString(" — ")
+                    if (caption.isNotBlank()) {
+                        Text(caption, color = JColors.TextDim, fontSize = 12.sp, lineHeight = 16.sp, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                    }
                 }
             }
         }
