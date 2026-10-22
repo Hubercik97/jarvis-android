@@ -1,5 +1,5 @@
 name = "jarvis-backend"
-main = "worker.js"
+main = "entry.js"
 compatibility_date = "2026-10-01"
 
 # Bez logów żądań w panelu Cloudflare (treść rozmów nie trafia do logów).
@@ -16,6 +16,13 @@ name = "jarvis-backend-test"
 enabled = false
 
 # Sekrety (ustawiane przez workflow z sekretów GitHub, nigdy w tym pliku):
-#   ANTHROPIC_API_KEY  — klucz API modelu
+#   OPENAI_API_KEY / ANTHROPIC_API_KEY — klucz wybranego modelu
 #   APP_TOKEN          — token aplikacji (ten sam wpisujesz w aplikacji w Ustawieniach)
-# Opcjonalnie zmienna MODEL (domyślnie claude-haiku-5-5).
+# Opcjonalnie AI_PROVIDER i MODEL; patrz docs/CLOUD_AI.md.
+
+# Deploy only explicitly, after reviewing settings. Copy the database binding from
+# wrangler.local.toml.example and replace its ID for a remote environment.
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/health", "/chat", "/tts", "/memory", "/memory/*", "/tasks", "/tasks/*", "/conversations", "/conversations/*"]

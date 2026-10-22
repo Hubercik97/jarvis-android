@@ -42,7 +42,7 @@ for (let i = 0; i < 6; i++) {
   await new Promise((r) => setTimeout(r, 5000)); // świeżo ustawiony sekret potrzebuje chwili
 }
 notice("Backend /health", `ok=${health.ok} klucz_modelu=${health.configured} format_klucza=${health.key_format_ok} model=${health.model} token=${health.auth}`);
-if (!health.configured) fail("Test backendu", "Serwer nie ma klucza ANTHROPIC_API_KEY.");
+if (!health.configured) fail("Test backendu", "Serwer nie ma skonfigurowanego klucza wybranego dostawcy AI.");
 if (health.auth !== "ok") fail("Test backendu", `Token aplikacji nie działa (stan: ${health.auth}).`);
 
 const c = await call("/chat", {
