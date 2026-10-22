@@ -54,6 +54,12 @@ const {_electron}=require('playwright');const assert=require('node:assert/strict
   await page.getByRole('button',{name:'Minimalizuj do zasobnika'}).click();
   assert.equal(await application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].isVisible()),false);
   await application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].show());
+  await application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(900,680));
+  await page.waitForFunction(()=>window.innerWidth<=900);
+  const composer=await page.locator('.composer').boundingBox();
+  assert.ok(composer.y+composer.height<=await page.evaluate(()=>innerHeight),'composer must remain visible on a small laptop window');
+  await application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1260,820));
+  await page.waitForFunction(()=>window.innerWidth>1000);
   await fs.mkdir(path.resolve(__dirname,'../release'),{recursive:true});
   await page.screenshot({path:path.resolve(__dirname,'../release/jarvis-desktop.png')});
   assert.deepEqual(errors,[]);

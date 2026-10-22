@@ -87,7 +87,8 @@ Electron z `--no-sandbox`, aby działać w ograniczonym kontenerze. Zbudowana ap
 nie dostaje tej flagi. Test Windows nie wyłącza sandboxa.
 
 Cross-build NSIS z Linux wymaga działającego Wine dla etapu deinstalatora. Natywny
-workflow Windows jest podstawową ścieżką budowania. Nie traktuj małego pośredniego
+workflow Windows jest podstawową ścieżką budowania. Pierwszy natywny build przeszedł
+łącznie z testem okna i pakowaniem instalatora; wynik najnowszego commitu sprawdzaj w Actions. Nie traktuj małego pośredniego
 EXE z nieudanego cross-buildu jako gotowego instalatora.
 
 ## Backend lokalny i chmurowy
@@ -172,7 +173,7 @@ Testy AI/STT/pogody/GitHub/TTS używają atrap. Nie potwierdzają jakości polsk
 dostępności modelu dla konkretnego konta ani zdalnego wdrożenia. Nie przeprowadzono
 ręcznego testu na Windows 10/11, Celeron N4000 ani mikrofonie właściciela.
 
-W teście Electron/Linux z automatyzacją suma working sets procesów wyniosła ok. 549 MB.
+W teście Electron/Linux z automatyzacją suma working sets procesów wyniosła ok. 550 MB.
 Nie jest to gwarancja zużycia RAM na Windows. Nie ma lokalnego modelu, WebGL, filmów
 ani zewnętrznych fontów. Domyślny tryb oszczędny ogranicza animacje; analizator mikrofonu
 odświeża poziom maksymalnie ok. 15 razy/s i jest zamykany po nagraniu. Zadania są
