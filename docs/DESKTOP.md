@@ -36,7 +36,7 @@ alternatywą bez instalacji; sterowanie systemem jest dostępne wyłącznie w El
 - Cloudflare Queues: żądanie uruchomienia zwraca 202, a konsument zapisuje wynik w D1
   niezależnie od klienta. Cron obsługuje terminy zadań oraz odzyskanie utraconej wysyłki.
 - Windows NSIS EXE: konfiguracja instalatora per użytkownik, workflow kompilujący
-  na `windows-latest`, test Electron, suma SHA256 i artefakt do pobrania. Workflow nie
+  na `windows-latest`, test Electron, instalacja/deinstalacja na runnerze Windows, test zainstalowanej aplikacji, suma SHA256 i artefakt do pobrania. Workflow nie
   publikuje wydania, nie wdraża chmury i nie podpisuje kodu certyfikatem.
 
 ## Instalacja i połączenie użytkownika

@@ -48,6 +48,21 @@ jobs:
         run: npm run dist:win
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Install EXE and test packaged application
+        shell: pwsh
+        run: |
+          $installer = Get-ChildItem release/*Setup-x64.exe | Select-Object -First 1
+          if ($installer.Length -lt 50000000) { throw "Installer is unexpectedly small" }
+          $installDir = Join-Path $env:RUNNER_TEMP 'JarvisInstalled'
+          $installed = Start-Process -FilePath $installer.FullName -ArgumentList @('/S', "/D=$installDir") -Wait -PassThru
+          if ($installed.ExitCode -ne 0) { throw "NSIS installation failed: $($installed.ExitCode)" }
+          $env:JARVIS_INSTALLED_EXE = Join-Path $installDir 'Jarvis Desktop.exe'
+          node tests/installed-smoke.cjs
+          if ($LASTEXITCODE -ne 0) { throw "Installed application smoke failed" }
+          $uninstaller = Get-ChildItem $installDir -Filter 'Uninstall*.exe' | Select-Object -First 1
+          if (!$uninstaller) { throw "Uninstaller missing" }
+          $removed = Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -Wait -PassThru
+          if ($removed.ExitCode -ne 0) { throw "Uninstall failed" }
       - name: SHA256
         shell: pwsh
         run: |
@@ -62,5 +77,6 @@ jobs:
             desktop/release/*Setup-x64.exe
             desktop/release/*.sha256
             desktop/release/jarvis-desktop.png
+            desktop/release/jarvis-installed.png
           if-no-files-found: error
           retention-days: 14
