@@ -16,7 +16,7 @@ export async function handleDesktopApi(request, env, url, json) {
     if (url.pathname === '/stt' && request.method === 'POST') {
       if (!env.OPENAI_API_KEY) return json({error:'Transkrypcja wymaga klucza OpenAI na serwerze'},503);
       const body = await audioBody(request);
-      if (!['audio/webm','audio/wav','audio/mp4'].includes(body.mime) || typeof body.audio !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(body.audio) || body.audio.length > 2_800_000) return json({error:'Nieprawidłowe nagranie (maks. 2 MB)'},400);
+      if (!['audio/webm','audio/wav','audio/mp4'].includes(body.mime) || typeof body.audio !== 'string' || !/^[A-Za-z0-9+/]+={0,2}$/.test(body.audio) || body.audio.length > 2_800_000 || body.audio.length % 4 !== 0) return json({error:'Nieprawidłowe nagranie (maks. 2 MB)'},400);
       const bytes = Uint8Array.from(atob(body.audio), c => c.charCodeAt(0));
       if (!bytes.length || bytes.length > 2_000_000) return json({error:'Za duże lub puste nagranie'},413);
       if (!await reserveModelCall(env)) return json({error:'Dzienny limit AI wykorzystany'},429);

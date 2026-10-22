@@ -38,6 +38,8 @@ const {_electron}=require('playwright');const assert=require('node:assert/strict
   await assert.rejects(page.evaluate(()=>window.jarvis.control('delete_files')));
   await assert.rejects(page.evaluate(()=>window.jarvis.control('open_documents')));
   await page.getByRole('button',{name:'Centrum dowodzenia',exact:false}).click();
+  await page.getByRole('button',{name:'Pogoda · odśwież',exact:false}).click();
+  await page.waitForFunction(()=>document.querySelector('.weather').textContent.includes('14°C'));
   await page.getByLabel('Wiadomość',{exact:true}).fill('Przygotuj plan projektu');await page.getByRole('button',{name:'Wyślij',exact:false}).click();
   await page.waitForFunction(()=>document.querySelector('.message.assistant')?.textContent.includes('Plan testowy'));
   assert.equal(modelCalls,1);assert.equal(messages.get(conversations[0].id).length,2);
@@ -56,6 +58,14 @@ const {_electron}=require('playwright');const assert=require('node:assert/strict
   await page.screenshot({path:path.resolve(__dirname,'../release/jarvis-desktop.png')});
   assert.deepEqual(errors,[]);
   console.log('Measured Electron working sets (MB):',await application.evaluate(({app})=>Math.round(app.getAppMetrics().reduce((n,p)=>n+p.memory.workingSetSize,0)/1024)));
+  const canPersist=await application.evaluate(({safeStorage})=>safeStorage.isEncryptionAvailable()&&(process.platform!=='linux'||safeStorage.getSelectedStorageBackend()!=='basic_text'));
+  if(canPersist)await page.evaluate(async()=>{const config=await window.jarvis.settings();await window.jarvis.configure({...config,rememberToken:true});});
+  const stored=await fs.readFile(path.join(profile,'settings.json'),'utf8');assert.ok(!stored.includes(fixtureToken));
+  await application.close();
+  application=await _electron.launch({args:[path.resolve(__dirname,'..'),`--user-data-dir=${profile}`,...(process.platform==='linux'?['--no-sandbox']:[])],timeout:45000});
+  const restored=await application.firstWindow();await restored.waitForSelector('h1');
+  assert.equal((await restored.evaluate(()=>window.jarvis.settings())).hasToken,canPersist);
+  console.log(canPersist?'PASS: system-encrypted token restored after process restart':'PASS: session-only token discarded after process restart');
   console.log('PASS: real Electron window, sandbox/isolation, token boundary, cloud chat fixture, history, local permission + confirmation, tray hide/show');
  }finally{if(application)await application.close();await new Promise(r=>server.close(r));await fs.rm(profile,{recursive:true,force:true,maxRetries:5,retryDelay:200});}
 })().catch(error=>{console.error(error);process.exitCode=1;});

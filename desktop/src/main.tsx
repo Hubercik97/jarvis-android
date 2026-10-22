@@ -1,7 +1,7 @@
 import React,{useEffect,useRef,useState} from 'react';
 import {createRoot} from 'react-dom/client';
 import type {Settings,LocalAction} from '../shared/types';
-import {localCommand} from './commands';
+import {localCommand,isProjectStatus} from './commands';
 import './style.css';
 type Message={role:'user'|'assistant';content:string};
 type Task={id:string;title:string;kind:string;status:string;result:string|null;scheduled_at?:string};
@@ -50,7 +50,7 @@ function App(){
   }
   if(generation!==speechGeneration.current)return;
   const utterance=new SpeechSynthesisUtterance(value);utterance.lang='pl-PL';utterance.rate=.96;
-  const voice=voices.find(v=>v.voiceURI===settings?.voice)||voices.find(v=>/Adam|Marek|Male/i.test(v.name))||voices[0];if(voice)utterance.voice=voice;
+  const voice=voices.find(v=>v.voiceURI===settings?.voice)||voices.find(v=>/\b(Adam|Marek|Male)\b/i.test(v.name))||voices[0];if(voice)utterance.voice=voice;
   utterance.onstart=()=>setSpeaking(true);utterance.onend=()=>setSpeaking(false);utterance.onerror=()=>setSpeaking(false);window.speechSynthesis.speak(utterance);
  }
  async function control(action:LocalAction){try{const result=await bridge.control(action);setStatus(result.message);setMessages(m=>[...m,{role:'assistant',content:result.message}]);}catch(e){report(e);}}
@@ -59,6 +59,9 @@ function App(){
   setText('');stopVoice();
   const action=localCommand(input);if(action){await control(action);return;}
   if(!online){setStatus('Najpierw połącz aplikację z chmurą.');return;}
+  if(isProjectStatus(input)){
+   try{const data=await bridge.api(`/developer/project?repo=${encodeURIComponent(settings?.repository||'Hubercik97/jarvis-android')}`);setProject(data);setTab('developer');setStatus(`Projekt ${data.name}: gałąź ${data.branch}, otwarte zgłoszenia i PR: ${data.open_issues}.`);}catch(e){report(e);}return;
+  }
   sending.current=true;setBusy(true);const updated:Message[]=[...messages,{role:'user',content:input}];setMessages(updated);
   try{
    let id=conversation;if(!id){id=(await bridge.api('/conversations','POST',{title:input.slice(0,120)})).id;setConversation(id);}

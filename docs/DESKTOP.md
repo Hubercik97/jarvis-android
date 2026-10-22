@@ -9,7 +9,9 @@ klientem; jego kod nie został usunięty ani przebudowany w tym przyroście.
 Baza zmian: `feature/jarvis-cloud-assistant` → `feature/jarvis-openai-foundation` →
 `feature/jarvis-desktop-cloud`. Zastano działającą PWA, Kotlin/Compose, backend Workers,
 OpenAI/Anthropic, D1 rozmów i zadań, KV faktów oraz 72 testy backendu. Stary wykonawca
-zadania działał tylko przez czas żądania HTTP. Panel WWW w katalogu głównym pozostaje
+zadania działał tylko przez czas żądania HTTP. Odczyt publicznego `/health` istniejącego testowego Workera potwierdził dostępność starszego backendu Anthropic, KV i wyszukiwania; bez tokenu nie testowano płatnej rozmowy. Nowy kod OpenAI/Desktop nie został tam wdrożony.
+
+Panel WWW w katalogu głównym pozostaje
 alternatywą bez instalacji; sterowanie systemem jest dostępne wyłącznie w Electronie.
 
 ## Co zbudowano
@@ -23,7 +25,7 @@ alternatywą bez instalacji; sterowanie systemem jest dostępne wyłącznie w El
   Nie jest to jeszcze agent Codex wykonujący kod, testy i PR na polecenie modelu.
 - Lokalny agent w procesie głównym Electron: otwieranie Chrome, Dokumentów i skonfigurowanego
   repozytorium GitHub. Przykłady: „Jarvis, otwórz Chrome”, „otwórz folder Dokumenty”,
-  „otwórz mój projekt na GitHubie”. Każda akcja wymaga natywnego potwierdzenia.
+  „otwórz mój projekt na GitHubie”. Każda akcja wymaga sprawdzenia tokenu w chmurze i natywnego potwierdzenia.
 - Minimalizacja/zamknięcie do zasobnika; zakończenie procesu przez menu zasobnika.
   Uruchamianie z Windowsem jest opcją domyślnie wyłączoną.
 - Nagranie mikrofonu do 30 sekund, transkrypcja polska przez `/stt` i OpenAI.
@@ -160,7 +162,7 @@ opisane jako przyszłe, a nie prezentowane jako aktywne.
 
 ## Walidacja, wydajność i ograniczenia
 
-Lokalnie przeszły 83 testy backendu, 4 testy polityki Desktop, TypeScript/build React,
+Lokalnie przeszły 83 testy backendu, 7 testów polityki i poleceń Desktop, TypeScript/build React,
 test rzeczywistego okna Electron i IPC oraz test lokalnego workerd/D1/KV.
 Lokalna Queue dostarczyła zadanie po odpowiedzi 202 i zapisała w D1 oczekiwany błąd
 braku klucza — bez wywołania płatnego API. Testy konsumenta z atrapą AI sprawdzają

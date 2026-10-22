@@ -56,24 +56,27 @@ async function boot(){
   if(process.platform==='win32') app.setLoginItemSettings({openAtLogin:settings.startup,path:process.execPath,args:['--hidden']});
   await save();return snapshot();
  });
- handle('api',async(route:unknown,method='GET',body:unknown)=>{
+ async function cloudRequest(route:unknown,method='GET',body?:unknown){
   const api=apiPath(route,method);
   if(!settings.endpoint||!token) throw new Error('Połącz aplikację z chmurą w Ustawieniach');
   const data=body===undefined?undefined:JSON.stringify(body);
   if(data&&Buffer.byteLength(data)>(api==='/stt'?3_000_000:64_000)) throw new Error('Za duże żądanie');
-  const response=await fetch(settings.endpoint+api,{method,headers:{'x-jarvis-token':token,...(data?{'content-type':'application/json'}:{})},body:data,redirect:'error',signal:AbortSignal.timeout(100_000)});
+  const response=await fetch(settings.endpoint+api,{method,headers:{'x-jarvis-token':token,...(data?{'content-type':'application/json'}:{})},body:data,redirect:'error',signal:AbortSignal.timeout(api==='/health'?8_000:100_000)});
   const text=await response.text();
   if(Buffer.byteLength(text)>8_000_000) throw new Error('Za duża odpowiedź serwera');
   let result;try{result=JSON.parse(text);}catch{throw new Error('Serwer nie udostępnia API Jarvisa');}
   if(!response.ok) throw new Error(typeof result.error==='string'?result.error:`HTTP ${response.status}`);
   return result;
- });
+ }
+ handle('api',cloudRequest);
  handle('control',async(input:unknown)=>{
   const action=actionOf(input);
   if(!settings.localControl) throw new Error('Sterowanie lokalne jest wyłączone w Ustawieniach');
   if(controlBusy) throw new Error('Zatwierdź lub odrzuć poprzednią operację');
   controlBusy=true;
   try{
+   const health=await cloudRequest('/health');
+   if(health.auth!=='ok')throw new Error('Najpierw uwierzytelnij połączenie z chmurą');
    const labels={open_chrome:'Otworzyć Google Chrome?',open_documents:'Otworzyć folder Dokumenty?',open_project:`Otworzyć https://github.com/${settings.repository}?`};
    const approval=await dialog.showMessageBox(window,{type:'question',message:labels[action],detail:'Lokalny agent wykona tylko tę jedną operację.',buttons:['Anuluj','Zezwól'],defaultId:0,cancelId:0,noLink:true});
    if(approval.response!==1) return {ok:false,message:'Operacja anulowana.'};

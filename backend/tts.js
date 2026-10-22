@@ -45,6 +45,7 @@ export async function handleTts(request, env, json) {
   try {
     res = await fetch(`${GOOGLE_TTS_URL}?key=${encodeURIComponent(env.GOOGLE_TTS_API_KEY.trim())}`, {
       method: "POST",
+      signal: AbortSignal.timeout(20_000),
       headers: { "content-type": "application/json" },
       body: JSON.stringify({
         input: { text },

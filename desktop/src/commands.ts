@@ -6,3 +6,8 @@ export function localCommand(text:string):LocalAction|null {
  if(/^otworz (moj )?projekt( na githubie)?$/.test(normalized))return 'open_project';
  return null;
 }
+
+export function isProjectStatus(text:string):boolean {
+ const normalized=text.normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().replace(/ł/g,'l').replace(/^\s*jarvis[, :]*\s*/,'').replace(/[.!?]+$/,'').trim();
+ return /^(sprawdz|pokaz) (stan|status) (mojego )?projektu$/.test(normalized);
+}
