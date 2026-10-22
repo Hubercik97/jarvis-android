@@ -1,0 +1,66 @@
+name: Jarvis Desktop — Windows test build
+on:
+  push:
+    paths: ['desktop/**', 'backend/**', '.github/workflows/desktop-windows.yml']
+  pull_request:
+    paths: ['desktop/**', 'backend/**', '.github/workflows/desktop-windows.yml']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: desktop-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+        working-directory: backend
+      - run: npm test
+        working-directory: backend
+      - run: npm run check
+        working-directory: backend
+  windows:
+    needs: backend
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: desktop
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - run: npm run build
+      - name: Electron window and IPC smoke test (local fixture API)
+        run: node tests/electron-smoke.cjs
+      - name: Build unsigned Windows x64 NSIS installer
+        run: npm run dist:win
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: SHA256
+        shell: pwsh
+        run: |
+          Get-ChildItem release/*Setup-x64.exe | ForEach-Object {
+            $digest = (Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower()
+            "$digest  $($_.Name)" | Set-Content "$($_.FullName).sha256"
+          }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Jarvis-Desktop-Windows-x64-test
+          path: |
+            desktop/release/*Setup-x64.exe
+            desktop/release/*.sha256
+            desktop/release/jarvis-desktop.png
+          if-no-files-found: error
+          retention-days: 14

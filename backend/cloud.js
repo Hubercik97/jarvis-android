@@ -36,7 +36,7 @@ export async function reserveModelCall(env) {
   return Boolean(row);
 }
 
-export async function handleCloud(request, env, url, json, runChat) {
+export async function handleCloud(request, env, url, json, runChat, dispatch) {
   if (!env.DB) return json({ error: 'Brak bazy D1 (wiązanie DB)' }, 503);
   const db = env.DB;
   const parts = url.pathname.split('/').filter(Boolean);
@@ -79,19 +79,51 @@ export async function handleCloud(request, env, url, json, runChat) {
         return result[0].meta.changes ? json({ ok: true }, 201) : json({ error: 'Nie znaleziono rozmowy' }, 404);
       }
     }
+    if (resource === 'projects') {
+      if (parts.length === 1 && request.method === 'GET') return json({ projects: (await db.prepare('SELECT * FROM projects ORDER BY updated_at DESC LIMIT 100').all()).results });
+      if (parts.length === 1 && request.method === 'POST') {
+        const body = await readBody(request);
+        const name = titleOf(body.name);
+        if (!name || typeof body.repository !== 'string' || !/^[A-Za-z0-9_.-]{1,100}\/[A-Za-z0-9_.-]{1,100}$/.test(body.repository) || body.repository.split('/').some(p => p === '.' || p === '..') || typeof body.summary !== 'string' || body.summary.length > 4000) return json({error:'Nieprawidłowe dane projektu'},400);
+        const newId = crypto.randomUUID();
+        await db.batch([
+          db.prepare('INSERT INTO projects VALUES (?, ?, ?, ?, ?, ?) ON CONFLICT(repository) DO UPDATE SET name=excluded.name,summary=excluded.summary,updated_at=excluded.updated_at').bind(newId,name,body.repository,body.summary,now,now),
+          audit(db,'project.saved',body.repository,now),
+        ]);
+        return json(await db.prepare('SELECT * FROM projects WHERE repository = ?').bind(body.repository).first(),201);
+      }
+      if (id && parts.length === 2 && request.method === 'DELETE') {
+        await db.batch([db.prepare('DELETE FROM projects WHERE id = ?').bind(id),audit(db,'project.deleted',id,now)]);
+        return json({ok:true});
+      }
+    }
     if (resource === 'tasks') {
       if (parts.length === 1 && request.method === 'GET') return json({ tasks: (await db.prepare('SELECT * FROM tasks ORDER BY created_at DESC LIMIT 100').all()).results });
       if (parts.length === 1 && request.method === 'POST') {
         const body = await readBody(request);
         const title = titleOf(body.title);
         if (!title || !['research','business_draft'].includes(body.kind)) return json({ error: 'Dozwolone są tylko research i business_draft; tytuł 1–120 znaków' }, 400);
+        let scheduled = null;
+        if (body.scheduled_at !== undefined && body.scheduled_at !== null) {
+          const date = new Date(body.scheduled_at);
+          if (typeof body.scheduled_at !== 'string' || !Number.isFinite(date.getTime()) || date <= new Date(now) || date.getTime() > Date.now() + 366*86400_000) return json({ error: 'Nieprawidłowy termin zadania' }, 400);
+          if (!env.TASK_QUEUE) return json({ error: 'Harmonogram wymaga kolejki TASK_QUEUE' }, 503);
+          scheduled = date.toISOString();
+        }
         const newId = crypto.randomUUID();
-        await db.batch([db.prepare('INSERT INTO tasks VALUES (?, ?, ?, ?, NULL, ?, ?)').bind(newId, title, body.kind, 'queued', now, now), audit(db, 'task.created', newId, now)]);
-        return json({ id: newId, title, kind: body.kind, status: 'queued', execution_available: true }, 201);
+        await db.batch([db.prepare('INSERT INTO tasks (id,title,kind,status,result,created_at,updated_at,scheduled_at) VALUES (?, ?, ?, ?, NULL, ?, ?, ?)').bind(newId, title, body.kind, 'queued', now, now, scheduled), audit(db, 'task.created', newId, now)]);
+        return json({ id: newId, title, kind: body.kind, status: 'queued', scheduled_at: scheduled, background: Boolean(env.TASK_QUEUE), execution_available: true }, 201);
       }
       if (id && action === 'run' && request.method === 'POST') {
         const task = await db.prepare('SELECT * FROM tasks WHERE id = ?').bind(id).first();
         if (!task) return json({ error: 'Nie znaleziono zadania' }, 404);
+        if (task.scheduled_at && task.scheduled_at > now) return json({ id, status: task.status, scheduled_at: task.scheduled_at }, 202);
+        if (env.TASK_QUEUE && !env.INTERNAL_QUEUE) {
+          if (task.status !== 'queued') return json({ error: 'Zadanie już uruchomione lub zakończone' }, 409);
+          if (!dispatch) return json({ error: 'Brak wykonawcy kolejki' }, 503);
+          await dispatch(env, id);
+          return json({ id, status: 'queued', background: true }, 202);
+        }
         // Only one runner may claim a task; a cancelled/completed task cannot restart.
         const claim = await db.prepare("UPDATE tasks SET status = 'running', updated_at = ? WHERE id = ? AND status = 'queued' RETURNING id").bind(now, id).first();
         if (!claim) return json({ error: 'Zadanie już uruchomione lub zakończone' }, 409);

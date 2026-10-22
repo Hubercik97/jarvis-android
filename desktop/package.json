@@ -1,0 +1,61 @@
+{
+  "name": "jarvis-desktop",
+  "version": "0.3.0",
+  "description": "Jarvis Desktop — personal cloud assistant",
+  "author": "Jarvis contributors",
+  "private": true,
+  "type": "module",
+  "main": "dist-electron/electron/main.cjs",
+  "scripts": {
+    "dev": "vite --host 127.0.0.1",
+    "build": "tsc -p tsconfig.electron.json && tsc -p tsconfig.json --noEmit && vite build",
+    "start": "npm run build && electron .",
+    "test": "tsc -p tsconfig.electron.json && node --test tests/*.test.cjs",
+    "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
+    "pack:linux": "npm run build && electron-builder --linux dir --publish never"
+  },
+  "build": {
+    "appId": "pl.jarvis.desktop",
+    "productName": "Jarvis Desktop",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "dist-electron/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "win": {
+      "target": [
+        "nsis"
+      ],
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "artifactName": "Jarvis-Desktop-${version}-Setup-${arch}.exe"
+    },
+    "linux": {
+      "category": "Utility"
+    }
+  },
+  "dependencies": {
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@types/node": "26.6.5",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "19.3.0",
+    "@vitejs/plugin-react": "6.1.2",
+    "electron": "45.0.0",
+    "electron-builder": "26.15.3",
+    "playwright": "1.64.1",
+    "typescript": "7.0.2",
+    "vite": "8.3.5"
+  }
+}

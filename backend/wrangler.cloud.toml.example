@@ -1,0 +1,36 @@
+name = "jarvis-desktop-test"
+main = "entry.js"
+compatibility_date = "2026-10-01"
+
+[vars]
+AI_PROVIDER = "openai"
+DAILY_MODEL_CALL_LIMIT = "100"
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/projects", "/projects/*", "/health", "/stt", "/weather", "/developer/project", "/chat", "/tts", "/memory", "/memory/*", "/tasks", "/tasks/*", "/conversations", "/conversations/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "jarvis-desktop-test"
+database_id = "00000000-0000-0000-0000-000000000000"
+migrations_dir = "migrations"
+
+[[kv_namespaces]]
+binding = "MEMORY"
+id = "00000000000000000000000000000000"
+
+# Provision only after approving costs and selecting the correct Cloudflare account.
+[[queues.producers]]
+binding = "TASK_QUEUE"
+queue = "jarvis-desktop-tasks-test"
+
+[[queues.consumers]]
+queue = "jarvis-desktop-tasks-test"
+max_batch_size = 1
+max_batch_timeout = 1
+max_retries = 3
+
+[triggers]
+crons = ["* * * * *"]

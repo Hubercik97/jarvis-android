@@ -28,7 +28,7 @@ test("health reports configuration without exposing the key", async () => {
   const res = await worker.fetch(new Request("https://jarvis.test/health", { headers: { "x-jarvis-token": "zly" } }), env);
   const body = await res.json();
   assert.equal(res.status, 200);
-  assert.deepEqual(body, { ok: true, provider: "anthropic", configured: true, key_format_ok: true, model: DEFAULT_MODEL, auth: "invalid", memory: false, search: false, tts: false });
+  assert.deepEqual(body, { ok: true, provider: "anthropic", configured: true, key_format_ok: true, model: DEFAULT_MODEL, auth: "invalid", memory: false, search: false, tts: false, stt: false, background: false });
   assert.ok(!JSON.stringify(body).includes("test-key"));
 });
 
