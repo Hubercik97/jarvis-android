@@ -26,7 +26,11 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
+
+      - name: Zależności narzędzi
+        working-directory: backend
+        run: npm ci
 
       - name: Testy backendu
         working-directory: backend
@@ -36,6 +40,7 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           JARVIS_APP_TOKEN: ${{ secrets.JARVIS_APP_TOKEN }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
@@ -45,13 +50,16 @@ jobs:
             if [ -n "${!n}" ]; then echo "::notice title=Opcjonalny sekret::$n ustawiony"; else echo "Opcjonalny $n: brak (funkcja wyłączona)"; fi
           done
           missing=""
-          for n in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID ANTHROPIC_API_KEY JARVIS_APP_TOKEN; do
+          for n in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID JARVIS_APP_TOKEN; do
             if [ -z "${!n}" ]; then missing="$missing $n"; fi
           done
+          if [ -z "$OPENAI_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+            missing="$missing OPENAI_API_KEY-lub-ANTHROPIC_API_KEY"
+          fi
           if [ -n "$missing" ]; then
             echo "::warning title=Brakujące sekrety::$missing"
           else
-            echo "::notice title=Sekrety::Wszystkie 4 sekrety są ustawione."
+            echo "::notice title=Sekrety::Wymagane sekrety są ustawione."
           fi
           if [ -n "$JARVIS_APP_TOKEN" ] && [ ${#JARVIS_APP_TOKEN} -lt 32 ]; then
             echo "::warning title=Token aplikacji::JARVIS_APP_TOKEN jest krótszy niż 32 znaki — użyj dłuższego."
@@ -66,12 +74,17 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
+
+      - name: Zależności i zasoby PWA
+        working-directory: backend
+        run: npm ci && npm run build
 
       - name: Wymagane sekrety
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           JARVIS_APP_TOKEN: ${{ secrets.JARVIS_APP_TOKEN }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
@@ -81,9 +94,12 @@ jobs:
             if [ -n "${!n}" ]; then echo "::notice title=Opcjonalny sekret::$n ustawiony"; else echo "Opcjonalny $n: brak (funkcja wyłączona)"; fi
           done
           missing=""
-          for n in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID ANTHROPIC_API_KEY JARVIS_APP_TOKEN; do
+          for n in CLOUDFLARE_API_TOKEN CLOUDFLARE_ACCOUNT_ID JARVIS_APP_TOKEN; do
             if [ -z "${!n}" ]; then missing="$missing $n"; fi
           done
+          if [ -z "$OPENAI_API_KEY" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+            missing="$missing OPENAI_API_KEY-lub-ANTHROPIC_API_KEY"
+          fi
           if [ -n "$missing" ]; then
             echo "::error title=Brakujące sekrety::$missing — dodaj je w Settings → Secrets and variables → Actions."
             exit 1
@@ -114,6 +130,17 @@ jobs:
           printf '\n[[env.test.kv_namespaces]]\nbinding = "MEMORY"\nid = "%s"\n' "$ID" >> wrangler.toml
           echo "::notice title=Pamięć::Przestrzeń KV podpięta jako MEMORY"
 
+      - name: Powiązanie D1 i dzienny limit
+        working-directory: backend
+        env:
+          DATABASE_ID: ${{ vars.JARVIS_D1_DATABASE_ID }}
+        run: |
+          if [[ ! "$DATABASE_ID" =~ ^[a-f0-9-]{36}$ ]]; then
+            echo "::error::Ustaw JARVIS_D1_DATABASE_ID po utworzeniu testowej bazy D1 i zastosowaniu migracji."
+            exit 1
+          fi
+          printf '\n[env.test.vars]\nDAILY_MODEL_CALL_LIMIT = "100"\n\n[[env.test.d1_databases]]\nbinding = "DB"\ndatabase_name = "jarvis-test"\ndatabase_id = "%s"\nmigrations_dir = "migrations"\n' "$DATABASE_ID" >> wrangler.toml
+
       - name: Wdróż Worker (test)
         id: deploy
         working-directory: backend
@@ -121,7 +148,7 @@ jobs:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
         run: |
-          npx --yes wrangler@3 deploy --env test 2>&1 | tee deploy.log
+          npm exec -- wrangler deploy --env test 2>&1 | tee deploy.log
           URL=$(grep -oE 'https://[a-z0-9.-]+\.workers\.dev' deploy.log | head -1)
           if [ -z "$URL" ]; then
             echo "::error title=Wdrożenie::Nie znaleziono adresu workers.dev. Jeśli konto Cloudflare jest nowe, otwórz raz Workers & Pages w panelu Cloudflare, aby utworzyć subdomenę workers.dev."
@@ -135,22 +162,28 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
           APP_TOKEN: ${{ secrets.JARVIS_APP_TOKEN }}
           TAVILY_API_KEY: ${{ secrets.TAVILY_API_KEY }}
           GOOGLE_TTS_API_KEY: ${{ secrets.GOOGLE_TTS_API_KEY }}
         run: |
-          printf '%s' "$ANTHROPIC_API_KEY" | npx --yes wrangler@3 secret put ANTHROPIC_API_KEY --env test > /dev/null
-          printf '%s' "$APP_TOKEN" | npx --yes wrangler@3 secret put APP_TOKEN --env test > /dev/null
+          if [ -n "$OPENAI_API_KEY" ]; then
+            printf '%s' "$OPENAI_API_KEY" | npm exec -- wrangler secret put OPENAI_API_KEY --env test > /dev/null
+          fi
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            printf '%s' "$ANTHROPIC_API_KEY" | npm exec -- wrangler secret put ANTHROPIC_API_KEY --env test > /dev/null
+          fi
+          printf '%s' "$APP_TOKEN" | npm exec -- wrangler secret put APP_TOKEN --env test > /dev/null
           # Opcjonalne: ustawiane tylko gdy istnieją w GitHub (brak = funkcja wyłączona, nic nie jest usuwane).
           if [ -n "$TAVILY_API_KEY" ]; then
-            printf '%s' "$TAVILY_API_KEY" | npx --yes wrangler@3 secret put TAVILY_API_KEY --env test > /dev/null
+            printf '%s' "$TAVILY_API_KEY" | npm exec -- wrangler secret put TAVILY_API_KEY --env test > /dev/null
             echo "Wyszukiwanie w internecie: klucz ustawiony."
           else
             echo "Wyszukiwanie w internecie: brak TAVILY_API_KEY — funkcja wyłączona."
           fi
           if [ -n "$GOOGLE_TTS_API_KEY" ]; then
-            printf '%s' "$GOOGLE_TTS_API_KEY" | npx --yes wrangler@3 secret put GOOGLE_TTS_API_KEY --env test > /dev/null
+            printf '%s' "$GOOGLE_TTS_API_KEY" | npm exec -- wrangler secret put GOOGLE_TTS_API_KEY --env test > /dev/null
             echo "Głos w chmurze: klucz ustawiony."
           else
             echo "Głos w chmurze: brak GOOGLE_TTS_API_KEY — funkcja wyłączona."

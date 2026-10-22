@@ -225,3 +225,13 @@ main {
   .core { --size: min(44vw, 170px); }
   .core-wrap { padding-top: 0; }
 }
+
+.cloud-panel { max-width: 760px; margin: 1rem auto; padding: 1rem; border: 1px solid #1d6979; border-radius: 16px; background: #081322; color: #d6edf5; }
+.cloud-panel summary { cursor: pointer; color: #62e8f4; padding: .5rem 0; }
+.cloud-panel p, .cloud-panel li { overflow-wrap: anywhere; line-height: 1.5; }
+.cloud-panel h2 { font-size: 1rem; margin-top: 1.5rem; }
+.cloud-panel li { margin: .6rem 0; }
+.cloud-panel select { max-width: 100%; background: #102433; color: #d6edf5; padding: .5rem; }
+.cloud-panel .text-form { flex-wrap: wrap; }
+.cloud-panel .text-form input { min-width: 140px; }
+.cloud-transcript { white-space: pre-wrap; }

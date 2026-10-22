@@ -1,5 +1,8 @@
 # Jarvis — asystent głosowy na Androida
 
+Aktualny przyrost chmurowy: [audyt, OpenAI, D1, zadania, panel i ograniczenia](docs/CLOUD_AI.md).
+Poniżej zachowano opis pierwotnej PWA; stan gałęzi Android i chmury opisuje powyższy dokument.
+
 Prototyp PWA (etap 1). Działa w Google Chrome na Androidzie i można go dodać do ekranu głównego jak aplikację.
 
 **Adres po publikacji:** https://hubercik97.github.io/jarvis-android/

@@ -35,11 +35,11 @@ export function validateQuery(raw, env = {}) {
   if (query.length < QUERY_MIN) return { error: "Zapytanie jest puste lub za krótkie." };
   if (query.length > QUERY_MAX) return { error: `Zapytanie jest za długie (maks. ${QUERY_MAX} znaków) — skróć je.` };
   if (/^https?:\/\/\S+$/i.test(query)) return { error: "To jest adres strony — użyj read_page zamiast web_search." };
-  for (const name of ["TAVILY_API_KEY", "ANTHROPIC_API_KEY", "APP_TOKEN", "GOOGLE_TTS_API_KEY"]) {
+  for (const name of ["TAVILY_API_KEY", "ANTHROPIC_API_KEY", "OPENAI_API_KEY", "APP_TOKEN", "GOOGLE_TTS_API_KEY"]) {
     const v = typeof env[name] === "string" ? env[name].trim() : "";
     if (v.length >= 8 && query.includes(v)) return { error: "Zapytanie odrzucone: zawiera dane poufne." };
   }
-  if (/\b(sk-ant-|tvly-)[A-Za-z0-9_-]{6,}/.test(query)) return { error: "Zapytanie odrzucone: wygląda na klucz API." };
+  if (/\b(sk-|tvly-)[A-Za-z0-9_-]{6,}/.test(query)) return { error: "Zapytanie odrzucone: wygląda na klucz API." };
   return { query };
 }
 

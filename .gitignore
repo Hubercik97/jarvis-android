@@ -1,0 +1,7 @@
+backend/node_modules/
+backend/public/
+backend/.wrangler/
+backend/.dev.vars
+backend/.dev.vars.*
+backend/.env*
+backend/wrangler.local.toml

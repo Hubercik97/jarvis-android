@@ -14,12 +14,12 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '0.1.0';
+  const APP_VERSION = '0.2.0';
   const LANG = 'pl-PL';
 
   // Adres przyszłego backendu (etap 2). Gdy jest null, Jarvis nie udaje AI.
   // Uwaga: tutaj nigdy nie wpisujemy klucza API — tylko adres własnego serwera.
-  const AI_ENDPOINT = null;
+  // Same-origin cloud adapter is optional; API keys never enter this application.
 
   const $ = (id) => document.getElementById(id);
   const ui = {
@@ -370,7 +370,7 @@
     const mic = { granted: 'mikrofon działa', prompt: 'mikrofon czeka na zgodę', denied: 'mikrofon jest zablokowany' }[app.micPermission] || 'stan mikrofonu jest nieznany';
     const voice = app.plVoice ? 'mam polski głos' : 'nie mam polskiego głosu w systemie';
     const net = navigator.onLine ? 'internet jest dostępny' : 'brak internetu';
-    return `Raport: ${mic}, ${voice}, ${net}. Model AI nie jest jeszcze podłączony.`;
+    return `Raport: ${mic}, ${voice}, ${net}. ${window.jarvisCloud?.enabled ? "Chmura AI jest połączona." : "Model AI nie jest jeszcze podłączony."}`;
   }
 
   const NO_AI_REPLY = 'Nie jestem jeszcze połączony z modelem AI, więc nie odpowiem na to pytanie. Powiedz „co potrafisz”, aby usłyszeć dostępne polecenia.';
@@ -390,9 +390,7 @@
     if (/\b(dziekuje|dzieki)\b/.test(t)) return 'Proszę bardzo.';
     if (/^(czesc|hej|siema|witaj|dzien dobry|dobry wieczor|halo|jarvis)\b/.test(t)) return `${greeting()} W czym mogę pomóc?`;
 
-    if (AI_ENDPOINT) {
-      // Etap 2: tutaj trafi zapytanie do własnego backendu (bez kluczy w przeglądarce).
-    }
+    if (window.jarvisCloud?.enabled) return window.jarvisCloud.reply(text);
     return NO_AI_REPLY;
   }
 
@@ -573,7 +571,7 @@
     handleUtterance(text);
   });
 
-  ui.clear.addEventListener('click', () => { ui.log.innerHTML = ''; app.lastReply = ''; });
+  ui.clear.addEventListener('click', () => { ui.log.innerHTML = ''; app.lastReply = ''; window.jarvisCloud?.clear(); });
 
   ui.wake.addEventListener('change', () => {
     if (ui.wake.checked) startWatch();

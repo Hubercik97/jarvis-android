@@ -4,12 +4,13 @@
  * a bez internetu — wersja z pamięci podręcznej. Ścieżki są względne, więc działa
  * zarówno pod https://<login>.github.io/jarvis-android/, jak i na localhost.
  */
-const CACHE = 'jarvis-v0.1.0';
+const CACHE = 'jarvis-v0.2.0-cloud';
 const SHELL = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './cloud-ui.js',
   './manifest.webmanifest',
   './icons/icon-192.png',
   './icons/icon-512.png',
@@ -32,6 +33,8 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const req = event.request;
   if (req.method !== 'GET') return;
+  // Authenticated records and tokens must never be stored in the offline cache.
+  if (/^\/(health|chat|tts|memory|tasks|conversations)(\/|$)/.test(new URL(req.url).pathname)) return;
   const url = new URL(req.url);
   if (url.origin !== self.location.origin) return; // obce adresy (np. przyszłe API) bez cache
 

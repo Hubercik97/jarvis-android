@@ -88,6 +88,38 @@
     <span id="version"></span>
   </footer>
 
+  <section class="cloud-panel" aria-label="Jarvis Cloud">
+    <details>
+      <summary>JARVIS CLOUD · pamięć, zadania i biznes</summary>
+      <p>Połączenie wymaga wersji aplikacji hostowanej przez Worker. Token osobistej przestrzeni jest przechowywany tylko w pamięci tej karty. Nie wpisuj tutaj klucza OpenAI.</p>
+      <form id="cloudConnect" class="text-form">
+        <input id="cloudToken" type="password" autocomplete="off" aria-label="Token osobistej przestrzeni" placeholder="Token osobistej przestrzeni" required>
+        <button type="submit" class="btn-small">Połącz</button>
+      </form>
+      <button id="cloudDisconnect" type="button" class="btn-small">Rozłącz</button>
+      <button id="cloudRefresh" type="button" class="btn-small">Odśwież dane</button>
+      <p id="cloudStatus" role="status">Chmura niepołączona. Lokalne polecenia działają bez niej.</p>
+      <label><input id="cloudSaveHistory" type="checkbox"> Zapisuj nowe wiadomości w historii chmurowej</label>
+      <h2>Pamięć długoterminowa</h2>
+      <form id="cloudFactForm" class="text-form">
+        <input id="cloudFact" maxlength="200" placeholder="Informacja do zapamiętania" aria-label="Nowy fakt" required>
+        <button class="btn-small" type="submit">Zapamiętaj</button>
+      </form>
+      <ul id="cloudMemory"></ul>
+      <h2>Historia chmurowa</h2>
+      <ul id="cloudConversations"></ul>
+      <p id="cloudTranscript" class="cloud-transcript"></p>
+      <h2>Zadania · JARVIS BUSINESS</h2>
+      <p>Badania i szkice strategii. Brak publikacji, zakupów i wysyłania wiadomości. Zadanie wykonuje się po naciśnięciu „Uruchom”; nie ma jeszcze pracy w tle po zakończeniu żądania.</p>
+      <form id="cloudTaskForm" class="text-form">
+        <input id="cloudTaskTitle" maxlength="120" placeholder="Temat analizy lub zadania" aria-label="Temat zadania" required>
+        <select id="cloudTaskKind" aria-label="Rodzaj zadania"><option value="research">Badanie</option><option value="business_draft">Szkic biznesowy</option></select>
+        <button class="btn-small" type="submit">Utwórz</button>
+      </form>
+      <ul id="cloudTasks"></ul>
+    </details>
+  </section>
+  <script src="cloud-ui.js" defer></script>
   <script src="app.js" defer></script>
 </body>
 </html>
