@@ -25,4 +25,4 @@ enabled = false
 [assets]
 directory = "./public"
 binding = "ASSETS"
-run_worker_first = ["/health", "/chat", "/tts", "/memory", "/memory/*", "/tasks", "/tasks/*", "/conversations", "/conversations/*"]
+run_worker_first = ["/projects", "/projects/*", "/health", "/stt", "/weather", "/developer/project", "/chat", "/tts", "/memory", "/memory/*", "/tasks", "/tasks/*", "/conversations", "/conversations/*"]

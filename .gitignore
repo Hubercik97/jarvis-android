@@ -5,3 +5,8 @@ backend/.dev.vars
 backend/.dev.vars.*
 backend/.env*
 backend/wrangler.local.toml
+desktop/node_modules/
+desktop/dist/
+desktop/dist-electron/
+desktop/release/
+backend/wrangler.desktop-local.toml

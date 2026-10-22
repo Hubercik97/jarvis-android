@@ -6,6 +6,8 @@
 // enable durable request budgeting; MEMORY binds the existing personal facts KV.
 // See docs/CLOUD_AI.md for authentication scope, cost controls and limitations.
 
+import { dispatchTask, scheduledTasks, consumeTasks } from "./background.js";
+import { handleDesktopApi } from "./desktop-api.js";
 import { handleCloud, reserveModelCall } from "./cloud.js";
 import { providerConfig, callOpenai } from "./providers.js";
 import { handleMemory, loadFacts, memoryPrompt } from "./memory.js";
@@ -546,6 +548,8 @@ async function handleChat(request, env) {
 }
 
 export default {
+  async queue(batch, env) { await consumeTasks(batch, env, handleChat); },
+  async scheduled(event, env) { await scheduledTasks(env); },
   async fetch(request, env) {
     const url = new URL(request.url);
     if (request.method === "OPTIONS") return new Response(null, { status: 204 });
@@ -564,12 +568,18 @@ export default {
         memory: Boolean(env.MEMORY),
         search: searchEnabled(env),
         tts: ttsEnabled(env),
+        stt: Boolean(cleanSecret(env.OPENAI_API_KEY)),
+        background: Boolean(env.TASK_QUEUE && env.DB),
       });
     }
     if (url.pathname === "/tts" && request.method === "POST") {
       const auth = authState(request, env);
       if (auth === "missing") return json({ error: "Serwer nie ma skonfigurowanego tokenu aplikacji" }, 503);
       if (auth !== "ok") return json({ error: "Nieprawidłowy token aplikacji" }, 401);
+      if (ttsEnabled(env)) {
+        try { if (!await reserveModelCall(env)) return json({ error: "Dzienny limit AI i głosu został wykorzystany" }, 429); }
+        catch { return json({ error: "Nie można zweryfikować budżetu głosu" }, 503); }
+      }
       return handleTts(request, env, json);
     }
     if (url.pathname === "/memory" || url.pathname.startsWith("/memory/")) {
@@ -578,11 +588,17 @@ export default {
       if (auth !== "ok") return json({ error: "Nieprawidłowy token aplikacji" }, 401);
       return handleMemory(request, env, url, json);
     }
-    if (/^\/(conversations|tasks)(\/|$)/.test(url.pathname)) {
+    if (["/stt", "/weather", "/developer/project"].includes(url.pathname)) {
+      const auth = authState(request, env);
+      if (auth === "missing") return json({ error: "Brak tokenu aplikacji" }, 503);
+      if (auth !== "ok") return json({ error: "Nieprawidłowy token aplikacji" }, 401);
+      return handleDesktopApi(request, env, url, json);
+    }
+    if (/^\/(conversations|tasks|projects)(\/|$)/.test(url.pathname)) {
       const auth = authState(request, env);
       if (auth === "missing") return json({ error: "Serwer nie ma skonfigurowanego tokenu aplikacji" }, 503);
       if (auth !== "ok") return json({ error: "Nieprawidłowy token aplikacji" }, 401);
-      return handleCloud(request, env, url, json, handleChat);
+      return handleCloud(request, env, url, json, handleChat, dispatchTask);
     }
     if (url.pathname === "/chat" && request.method === "POST") {
       return handleChat(request, env);
