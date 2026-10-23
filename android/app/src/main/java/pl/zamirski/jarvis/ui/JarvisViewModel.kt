@@ -75,6 +75,9 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
     var liveText by mutableStateOf("")
         private set
 
+    var voiceAudioAvailable by mutableStateOf(false)
+        private set
+
     var soundLevel by mutableStateOf(0f)
         private set
 
@@ -375,6 +378,8 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
     /** Wypowiada tekst (jeśli głos jest włączony i dostępny). Zwraca true, gdy mowa ruszyła. */
     private fun speakOrIdle(text: String): Boolean {
         if (settings.voiceReplies && voiceStatus == VoiceOutput.Status.READY && voice.speak(text)) {
+            soundLevel = 0f
+            voiceAudioAvailable = false
             mode = VoiceMode.SPEAKING
             liveText = if (handsFreeActive) "Mówię… potem znowu słucham." else "Mówię… (dotknij mikrofonu, aby przerwać)"
             return true
@@ -474,6 +479,11 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
 
     override fun onSpeakingStarted() {}
 
+    override fun onVoiceEnergy(level: Float, available: Boolean) {
+        voiceAudioAvailable = available
+        if (mode == VoiceMode.SPEAKING) soundLevel = if (available) level else 0f
+    }
+
     override fun onSpeakingFinished() {
         if (mode != VoiceMode.SPEAKING) return
         setIdle()
@@ -498,6 +508,7 @@ class JarvisViewModel(app: Application) : AndroidViewModel(app), SpeechInput.Lis
     private fun setIdle() {
         mode = VoiceMode.IDLE
         soundLevel = 0f
+        voiceAudioAvailable = false
     }
 
     override fun onCleared() {

@@ -6,3 +6,5 @@ for (const name of ['index.html','styles.css','app.js','cloud-ui.js','sw.js','ma
 }
 await cp(new URL('../icons/', import.meta.url), new URL('icons/', target), { recursive: true });
 console.log('Static PWA assets copied; source and secrets are excluded.');
+
+await cp(new URL('../hologram/', import.meta.url), new URL('hologram/', target), { recursive: true });

@@ -90,7 +90,7 @@ fun ChatScreen(vm: JarvisViewModel, actions: AppActions, onOpenHistory: () -> Un
         },
     ) {
         Box(Modifier.fillMaxWidth().height(150.dp), contentAlignment = Alignment.Center) {
-            JarvisCore(Modifier.fillMaxWidth().height(150.dp), energy = vm.soundLevel, active = vm.mode != VoiceMode.IDLE)
+            JarvisCore(Modifier.fillMaxWidth().height(150.dp), energy = vm.soundLevel, active = vm.mode != VoiceMode.IDLE, mode = vm.mode.name)
         }
         Text(
             when {

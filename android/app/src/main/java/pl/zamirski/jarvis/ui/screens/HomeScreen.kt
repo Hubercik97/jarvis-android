@@ -129,7 +129,11 @@ fun HomeScreen(vm: JarvisViewModel, actions: AppActions, navigate: (String) -> U
                     modifier = Modifier.fillMaxSize(),
                     energy = vm.soundLevel,
                     active = vm.mode != VoiceMode.IDLE,
+                    mode = vm.mode.name,
                 )
+                if (vm.mode == VoiceMode.SPEAKING) {
+                    Text(if (vm.voiceAudioAvailable) "TTS · rzeczywisty sygnał audio" else "Głos systemowy · brak analizy PCM", color = JColors.TextDim, fontSize = 9.sp, modifier = Modifier.align(Alignment.TopCenter))
+                }
                 ConnectionLine(vm.connection) { navigate(Routes.SETTINGS) }
             }
 

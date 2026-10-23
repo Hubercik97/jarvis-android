@@ -1,6 +1,7 @@
 // Real Electron window and main/preload IPC; model/network responses are local fixtures.
 const {_electron}=require('playwright');const assert=require('node:assert/strict');const http=require('node:http');const fs=require('node:fs/promises');const os=require('node:os');const path=require('node:path');const {randomUUID}=require('node:crypto');
 (async()=>{
+ const samples=48000*4,wav=Buffer.alloc(44+samples*2);wav.write('RIFF');wav.writeUInt32LE(wav.length-8,4);wav.write('WAVEfmt ',8);wav.writeUInt32LE(16,16);wav.writeUInt16LE(1,20);wav.writeUInt16LE(1,22);wav.writeUInt32LE(48000,24);wav.writeUInt32LE(96000,28);wav.writeUInt16LE(2,32);wav.writeUInt16LE(16,34);wav.write('data',36);wav.writeUInt32LE(samples*2,40);for(let i=0;i<samples;i++)wav.writeInt16LE(Math.round(Math.sin(i*2*Math.PI*440/48000)*10000),44+i*2);
  const fixtureToken='local-smoke-'+randomUUID();const conversations=[];const messages=new Map();let modelCalls=0;
  const server=http.createServer(async(req,res)=>{
   res.setHeader('content-type','application/json');
@@ -9,6 +10,7 @@ const {_electron}=require('playwright');const assert=require('node:assert/strict
   let data={};let status=200;
   if(req.url==='/health')data={ok:true,auth:'ok',configured:true,provider:'fixture',model:'test-only',background:true};
   else if(req.url==='/chat'){modelCalls++;assert.match(body.messages.at(-1).content,/plan projektu/);data={reply:'Plan testowy: audyt, implementacja, testy.'};}
+  else if(req.url==='/tts')data={audio:wav.toString('base64'),format:'wav',voice:'fixture-waveform'};
   else if(req.url==='/conversations'&&req.method==='POST'){data={id:randomUUID(),title:body.title};conversations.push(data);messages.set(data.id,[]);status=201;}
   else if(req.url==='/conversations')data={conversations};
   else if(/^\/conversations\/.+\/messages$/.test(req.url)){const id=req.url.split('/')[2];if(req.method==='POST'){messages.get(id).push(body);data={ok:true};}else data={messages:messages.get(id)};}
@@ -45,6 +47,16 @@ const {_electron}=require('playwright');const assert=require('node:assert/strict
   assert.equal(modelCalls,1);assert.equal(messages.get(conversations[0].id).length,2);
   await page.getByRole('button',{name:'Pamięć',exact:false}).click();await page.waitForSelector('.card');
   await page.getByRole('button',{name:'Otwórz rozmowę'}).click();await page.waitForSelector('.message.assistant');
+  await page.getByRole('button',{name:'Ustawienia',exact:false}).click();
+  await page.locator('select:has(option[value="google"])').selectOption('google');
+  await page.getByRole('button',{name:'Zapisz i sprawdź połączenie'}).click();
+  await page.waitForFunction(()=>document.querySelector('[role=status]').textContent.includes('Połączono'));
+  await page.getByRole('button',{name:'Centrum dowodzenia',exact:false}).click();
+  await page.getByRole('button',{name:'Odsłuchaj',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('.scene-canvas')?.dataset.audioSource==='tts'&&Number(document.querySelector('.scene-canvas').dataset.audioLevel)>.1);
+  await page.getByRole('button',{name:'Przerwij głos',exact:true}).click();
+  await page.waitForFunction(()=>document.querySelector('.scene-canvas')?.dataset.audioSource==='none'&&Number(document.querySelector('.scene-canvas').dataset.audioLevel)<.01);
+  console.log('PASS: real media-element TTS waveform drives the orb; stop clears the signal');
   // Confirm-deny path exercises the native-agent boundary without touching the OS.
   await page.evaluate(async()=>{const settings=await window.jarvis.settings();await window.jarvis.configure({...settings,localControl:true});});
   await application.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:0,checkboxChecked:false});});
@@ -61,6 +73,7 @@ const {_electron}=require('playwright');const assert=require('node:assert/strict
   await application.evaluate(({BrowserWindow})=>BrowserWindow.getAllWindows()[0].setSize(1260,820));
   await page.waitForFunction(()=>window.innerWidth>1000);
   await fs.mkdir(path.resolve(__dirname,'../release'),{recursive:true});
+  await page.waitForFunction(()=>Number(document.querySelector('.scene-canvas')?.dataset.fps)>0);
   await page.screenshot({path:path.resolve(__dirname,'../release/jarvis-desktop.png')});
   assert.deepEqual(errors,[]);
   console.log('Measured Electron working sets (MB):',await application.evaluate(({app})=>Math.round(app.getAppMetrics().reduce((n,p)=>n+p.memory.workingSetSize,0)/1024)));
