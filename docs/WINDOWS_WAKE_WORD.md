@@ -36,7 +36,7 @@ Samo wybudzenie nie daje nowych uprawnień. Otwieranie aplikacji i inne istniej�
 
 Hasło analizuje lokalny wątek roboczy ONNX Runtime na CPU. Ramki mikrofonu są przetwarzane w pamięci; aplikacja nie zapisuje nagrań z nasłuchu. Detektor nie ma klienta sieciowego ani klucza API. Wszystkie potrzebne modele są dołączone do instalatora — po instalacji nie potrzeba połączenia do wykrywania hasła.
 
-Dopiero osobne polecenie wypowiedziane po aktywacji korzysta z dotychczasowego `/stt` i systemu AI w chmurze. Ta krótka sesja może generować dotychczasowe koszty API. Wybudzanie samo w sobie nie uruchamia płatnej usługi i nie zmienia miesięcznego budżetu.
+Osobne polecenie wypowiedziane po aktywacji korzysta z dotychczasowego `/stt` i systemu AI w chmurze. Ta krótka sesja może generować dotychczasowe koszty API. Sam lokalny detektor nie korzysta z płatnej usługi. Potwierdzenie „Jestem, słucham cię” używa jednak wybranego dostawcy głosu: systemowy TTS działa bez kosztu API, a skonfigurowany Google TTS może naliczyć koszt już przy potwierdzeniu. Potwierdzenie można wyłączyć. Zachowaj limit 50 zł miesięcznie również dla tych wywołań.
 
 Nasłuch działa również po zminimalizowaniu lub ukryciu okna w zasobniku. Ikona zasobnika pokazuje stan i pozwala zatrzymać nasłuch. Zakończenie aplikacji zwalnia mikrofon i wątek modelu. Brak obchodzenia blokady ekranu, logowania ani ustawień prywatności Windows. Jeśli Windows zawiesi aplikację, odbierze mikrofon lub uśpi komputer, detektor nie może wtedy działać. Działanie przy zablokowanej sesji wymaga sprawdzenia na konkretnym systemie i urządzeniu audio.
 
