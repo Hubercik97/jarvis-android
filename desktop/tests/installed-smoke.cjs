@@ -42,5 +42,10 @@ const {_electron}=require('playwright');const assert=require('node:assert/strict
   await page.evaluate(()=>window.__installedWakeUnsubscribe());
   await page.screenshot({path:path.resolve(__dirname,'../release/jarvis-installed.png')});
   console.log('PASS: installed application launches, enforces HTTPS and renderer isolation, loads offline ONNX models/native binding, captures PCM while minimized, and stops wake capture');
+ }catch(error){
+  // This test profile has no credentials. Expose the bounded assertion through
+  // CI metadata as well as logs when an artifact host is inaccessible.
+  if(process.env.GITHUB_OUTPUT)await fs.appendFile(process.env.GITHUB_OUTPUT,'installed_failure=Installed smoke: '+String(error.message).replace(/[\r\n]/g,' ').slice(0,1200)+'\n');
+  throw error;
  }finally{if(app)await app.close();await fs.rm(profile,{recursive:true,force:true,maxRetries:5,retryDelay:200});}
 })().catch(error=>{console.error(error);process.exitCode=1;});

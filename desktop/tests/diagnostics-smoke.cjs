@@ -9,6 +9,10 @@ const {randomUUID}=require('node:crypto');
   if(req.url==='/health'){
    if(mode==='unauthorized'){res.writeHead(401);res.end(JSON.stringify({error:token}));return;}
    if(mode==='invalid'){res.end('null');return;}
+   if(mode==='html'){res.setHeader('content-type','text/html');res.end('<html>'+token+'</html>');return;}
+   if(mode==='missing-route'){res.writeHead(404);res.end('{}');return;}
+   if(mode==='missing-token'){res.end(JSON.stringify({auth:'missing',configured:true}));return;}
+   if(mode==='no-storage'){res.end(JSON.stringify({auth:'ok',configured:true,capabilities:{history:false}}));return;}
    data={auth:'ok',configured:true,provider:'fixture',model:'local-test'};
   }else if(req.url==='/tasks')data={tasks:[]};
   else if(req.url==='/stt'){counts.stt++;data={text:'Ile jest dwa plus dwa?'};}
@@ -23,6 +27,10 @@ const {randomUUID}=require('node:crypto');
  try{
   app=await _electron.launch({args,timeout:45000});app.process().stderr.on('data',b=>stderr+=b.toString());
   const page=await app.firstWindow();await page.waitForSelector('h1');const errors=[];page.on('pageerror',e=>errors.push(e.message));
+  async function waitForCloudState(expected){
+   for(let i=0;i<100;i++){const state=await page.evaluate(async()=>(await window.jarvis.diagnostics()).cloud.state);if(state===expected)return;await page.waitForTimeout(50);}
+   assert.equal((await page.evaluate(()=>window.jarvis.diagnostics())).cloud.state,expected);
+  }
   await page.getByRole('button',{name:'Chrome ↗',exact:true}).click();await page.waitForSelector('.control-settings');
   assert.ok((await page.locator('.status').innerText()).includes('Włącz sterowanie lokalne'));assert.ok(!(await page.locator('.status').innerText()).includes('invoking'));
   await assert.rejects(page.evaluate(()=>window.jarvis.control('open_documents')),error=>error.message.includes('Sterowanie lokalne')&&!error.message.includes('invoking'),'IPC errors must explain the permission without the Electron wrapper');
@@ -43,9 +51,13 @@ const {randomUUID}=require('node:crypto');
   for(let i=0;i<30;i++){if(await app.evaluate(()=>typeof globalThis.__approve==='function'))break;await page.waitForTimeout(50);}
   await page.getByLabel('Włącz sterowanie lokalne',{exact:true}).uncheck();await page.waitForFunction(async()=>!(await window.jarvis.settings()).localControl);
   await app.evaluate(()=>globalThis.__approve({response:1}));assert.match(await page.evaluate(()=>window.__pendingControl),/cofnięta/);assert.equal(await app.evaluate(()=>globalThis.__opened),0);
-  mode='unauthorized';await page.getByRole('button',{name:'Testuj połączenie API',exact:true}).click();await page.waitForFunction(async()=>(await window.jarvis.diagnostics()).cloud.state==='unauthorized');
-  mode='invalid';await page.getByRole('button',{name:'Testuj połączenie API',exact:true}).click();await page.waitForFunction(async()=>(await window.jarvis.diagnostics()).cloud.state==='invalid_response');
-  mode='ok';await page.getByRole('button',{name:'Testuj połączenie API',exact:true}).click();await page.waitForFunction(async()=>(await window.jarvis.diagnostics()).cloud.state==='authenticated');
+  mode='unauthorized';await page.getByRole('button',{name:'Testuj połączenie API',exact:true}).click();await waitForCloudState('unauthorized');
+  mode='invalid';await page.getByRole('button',{name:'Testuj połączenie API',exact:true}).click();await waitForCloudState('invalid_response');
+  for(const [failure,state] of [['html','endpoint_not_api'],['missing-route','endpoint_not_api'],['missing-token','server_token_missing'],['no-storage','storage_not_ready']]){
+   mode=failure;await page.getByRole('button',{name:'Testuj połączenie API',exact:true}).click();await waitForCloudState(state);
+   assert.ok(!(await page.locator('body').innerText()).includes(token),'no token from an invalid Worker can enter the UI');
+  }
+  mode='ok';await page.getByRole('button',{name:'Testuj połączenie API',exact:true}).click();await waitForCloudState('authenticated');
   await page.evaluate(()=>{
    const original=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);window.__streams=[];window.__denyMic=true;
    navigator.mediaDevices.getUserMedia=async options=>{if(window.__denyMic){window.__denyMic=false;throw new DOMException('test-only','NotAllowedError');}const s=await original(options);window.__streams.push(s);return s;};

@@ -14,6 +14,29 @@ concurrency:
   group: desktop-${{ github.ref }}
   cancel-in-progress: true
 jobs:
+  cloud-audit:
+    # Read-only GETs, no deploy, no paid AI calls, no secret rotation.
+    if: github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - name: Read-only compatibility audit of the owner's Worker
+        id: audit
+        run: node backend/tools/probe-api.mjs > cloud-api-audit.json
+        env:
+          JARVIS_PROBE_TOKEN: ${{ secrets.JARVIS_APP_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: ${{ steps.audit.outputs.summary }}
+        run: echo 'Read-only API results saved. No deployment or paid calls.'
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cloud-api-audit
+          path: cloud-api-audit.json
+          retention-days: 14
   backend:
     runs-on: ubuntu-latest
     steps:
@@ -51,6 +74,8 @@ jobs:
         run: node tests/wake-electron-smoke.cjs
       - name: Manual interruption and microphone recorder failure
         run: node tests/wake-interrupt-smoke.cjs
+      - name: Blocked main-loop recovery without a false wake inference timeout
+        run: node tests/wake-stall-smoke.cjs
       - name: Microphone, cloud diagnostics and explicit local-control consent
         run: node tests/diagnostics-smoke.cjs
       - name: Realtime quiet wake benchmark (runner CPU, not N4000 certification)
@@ -60,6 +85,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Install EXE and test packaged application
+        id: installed
         shell: pwsh
         run: |
           $installer = Get-ChildItem release/*Setup-x64.exe | Select-Object -First 1
@@ -74,6 +100,9 @@ jobs:
           if (!$uninstaller) { throw "Uninstaller missing" }
           $removed = Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -Wait -PassThru
           if ($removed.ExitCode -ne 0) { throw "Uninstall failed" }
+      - name: ${{ steps.installed.outputs.installed_failure || 'Installed application result recorded' }}
+        if: always()
+        run: echo 'Installer smoke result; no user credentials are used by this test.'
       - name: SHA256
         shell: pwsh
         run: |

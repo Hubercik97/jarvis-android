@@ -2,7 +2,7 @@ const test=require('node:test');
 const assert=require('node:assert/strict');
 const {EventEmitter}=require('node:events');
 const {WakeGate}=require('../dist-electron/electron/wake-policy.cjs');
-const {WakeService}=require('../dist-electron/electron/wake-service.cjs');
+const {WakeService,INFERENCE_TIMEOUT_MS}=require('../dist-electron/electron/wake-service.cjs');
 class FakeWorker extends EventEmitter{
  sent=[];terminated=false;
  postMessage(value){this.sent.push(value);}
@@ -87,10 +87,10 @@ test('invalid or nonfinite audio never reaches the native model',t=>{
  assert.equal(worker.sent.filter(m=>m.type==='pcm').length,0);
 });
 
-test('a stalled inference releases the microphone state with an explicit error instead of listening indefinitely',t=>{
+test('a stalled inference releases the microphone state with an explicit error instead of listening indefinitely',async t=>{
  t.mock.timers.enable({apis:['setTimeout']});
  const {worker,service}=fixture();t.after(()=>service.stop());
- service.pcm(pcm());t.mock.timers.tick(3001);
+ service.pcm(pcm());t.mock.timers.tick(INFERENCE_TIMEOUT_MS+1);await new Promise(setImmediate);
  assert.equal(service.status.phase,'error');assert.ok(worker.terminated);assert.match(service.status.message,/nie odpowiada/);
 });
 
@@ -124,9 +124,34 @@ test('acknowledgement waits for inference and is released on pause/stop',async t
 });
 test('an old inference still busy after reset cannot keep the microphone armed indefinitely',async t=>{
  const {worker,service}=fixture();t.after(()=>service.stop());
- for(let run=0;run<45&&service.status.phase==='armed';run++){
+ for(let run=0;run<110&&service.status.phase==='armed';run++){
   const receipt=service.pcm(pcm()),frame=worker.lastFrame;
   worker.emit('message',{type:'skipped',frame:frame.frame,epoch:frame.epoch});await receipt;
  }
  assert.equal(service.status.phase,'error');assert.ok(worker.terminated);assert.match(service.status.message,/nie kończy obliczeń/);
+});
+test('temporary delay beyond the old 3 s deadline recovers, but a later stall is still detected',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});
+ const {worker,service}=fixture();t.after(()=>service.stop());
+ const receipt=service.pcm(pcm());t.mock.timers.tick(3500);
+ assert.equal(service.status.phase,'armed');worker.score(worker.lastFrame,.01);assert.equal((await receipt).accepted,true);
+ assert.equal(service.diagnostics().processed,1);
+ const stalled=service.pcm(pcm());t.mock.timers.tick(INFERENCE_TIMEOUT_MS+1);await new Promise(setImmediate);
+ assert.equal(service.status.phase,'error');assert.equal((await stalled).accepted,false);
+ assert.equal(service.diagnostics().lastFailure,'inference_timeout');assert.equal(service.diagnostics().workerStage,'stopped');
+});
+test('an IPC response already queued when the watchdog fires gets one turn before timeout',async t=>{
+ t.mock.timers.enable({apis:['setTimeout']});const {worker,service}=fixture();t.after(()=>service.stop());
+ const receipt=service.pcm(pcm());t.mock.timers.tick(INFERENCE_TIMEOUT_MS+1);worker.score(worker.lastFrame,.01);await new Promise(setImmediate);
+ assert.equal(service.status.phase,'armed');assert.equal((await receipt).accepted,true);
+});
+test('native startup progress is bounded, has no microphone until ready and records only safe failure codes',()=>{
+ const worker=new FakeWorker();const service=new WakeService('unused','unused',()=>{},()=>worker);
+ service.start(.5);worker.emit('message',{type:'progress',stage:'warming_mel'});
+ assert.equal(service.status.phase,'loading');assert.equal(service.diagnostics().workerStage,'warming_mel');
+ service.ready();assert.equal(service.status.phase,'loading');assert.equal(worker.sent.length,0);
+ worker.emit('message',{type:'error',code:'startup_warming_mel_failed',message:'private provider text'});
+ assert.equal(service.diagnostics().lastFailure,'startup_warming_mel_failed');assert.ok(!JSON.stringify(service.diagnostics()).includes('private'));
+ service.start(.5);worker.emit('message',{type:'error',code:'secret-token-not-an-allowed-code'});
+ assert.equal(service.diagnostics().lastFailure,'model_error');service.stop();
 });
