@@ -1,0 +1,107 @@
+[
+  {
+    "file": "darkman-0-0-3.wav",
+    "expected": false,
+    "text": "Pobudka.",
+    "voice": "darkman",
+    "sha256": "8e25785f776ede7549062e1f1900ce73b1f828904670e052dc03e89d63048722"
+  },
+  {
+    "file": "darkman-0-4-3.wav",
+    "expected": false,
+    "text": "Jestem, słucham cię.",
+    "voice": "darkman",
+    "sha256": "eb80586ae502dbbf68113e68d3571e9fe80d18fc74f7ffe419547174ab656e55"
+  },
+  {
+    "file": "darkman-0-5-3.wav",
+    "expected": false,
+    "text": "Pobudka Jarek.",
+    "voice": "darkman",
+    "sha256": "0ef819468c6e05e1d0ff1662cc0c9db79f8677ee3e0e0fac4014e311aa1fb034"
+  },
+  {
+    "file": "darkman-1-0-3.wav",
+    "expected": true,
+    "text": "Pobudka Jarvis.",
+    "voice": "darkman",
+    "sha256": "97338dd180be127b49e40e2788bcbf0757f0b00bc215d73cde1c5974e1c2b58e"
+  },
+  {
+    "file": "darkman-1-1-3.wav",
+    "expected": true,
+    "text": "Pobudka, Dżarwis.",
+    "voice": "darkman",
+    "sha256": "a303b73677914e51b5c041198e2aea4e6b0de1062e9739937ebc31b7047f818a"
+  },
+  {
+    "file": "gosia-0-0-3.wav",
+    "expected": false,
+    "text": "Pobudka.",
+    "voice": "gosia",
+    "sha256": "2181f09ba17499534c46be544c83f3c2b30a7caf16a9b467b146a0e3e1a578d2"
+  },
+  {
+    "file": "gosia-0-4-3.wav",
+    "expected": false,
+    "text": "Jestem, słucham cię.",
+    "voice": "gosia",
+    "sha256": "65190f888147acb3ad44a55086fef7285bb8062bdebaf131d100fb4d05587379"
+  },
+  {
+    "file": "gosia-0-5-3.wav",
+    "expected": false,
+    "text": "Pobudka Jarek.",
+    "voice": "gosia",
+    "sha256": "5083ed8ba62a66d57be8c2dc242ad33b74ef1f248de956a0e82208e832a8b8d3"
+  },
+  {
+    "file": "gosia-1-0-3.wav",
+    "expected": true,
+    "text": "Pobudka Jarvis.",
+    "voice": "gosia",
+    "sha256": "752e90d7db26e29c3869de7bbc0cf94a823250a4621773be5e57bd4ebb45f09d"
+  },
+  {
+    "file": "gosia-1-1-3.wav",
+    "expected": true,
+    "text": "Pobudka, Dżarwis.",
+    "voice": "gosia",
+    "sha256": "b94f4833845ee09767adeecd8d3a27cd3a4e9a9f8a84c71ab74823ce2dc3f2fd"
+  },
+  {
+    "file": "mc_speech-0-0-3.wav",
+    "expected": false,
+    "text": "Pobudka.",
+    "voice": "mc_speech",
+    "sha256": "af37b287351f593bd2d0c0dd7942075ed0d5b936e853de29dc68eb974de3e61a"
+  },
+  {
+    "file": "mc_speech-0-4-3.wav",
+    "expected": false,
+    "text": "Jestem, słucham cię.",
+    "voice": "mc_speech",
+    "sha256": "cbc406ba1b336317bff0865136f58da662e284b51b24d34d055b7d9c6e1d4971"
+  },
+  {
+    "file": "mc_speech-0-5-3.wav",
+    "expected": false,
+    "text": "Pobudka Jarek.",
+    "voice": "mc_speech",
+    "sha256": "1a46a65739ed7214ce2bc9843a3ddc5c8fad1280733be574c528f8e46eeb3cc9"
+  },
+  {
+    "file": "mc_speech-1-0-3.wav",
+    "expected": true,
+    "text": "Pobudka Jarvis.",
+    "voice": "mc_speech",
+    "sha256": "70628459e317fc7c041fca1ac891b014583d92f64a65e55c27191862534ba01b"
+  },
+  {
+    "file": "mc_speech-1-1-3.wav",
+    "expected": true,
+    "text": "Pobudka, Dżarwis.",
+    "voice": "mc_speech",
+    "sha256": "f81348b79dd2f9d5c98369916a06f65d77df72b9b635c83263685ac87a32ebad"
+  }
+]

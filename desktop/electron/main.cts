@@ -3,16 +3,24 @@ import { readFile, writeFile, appendFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { endpointOf, repositoryOf, actionOf, apiPath } from './policy.cjs';
-import type { Settings, Configure } from '../shared/types.js';
+import {WakeService} from './wake-service.cjs';
+import type { Settings, Configure, WakePreferences } from '../shared/types.js';
 let window:BrowserWindow;
 let tray:Tray;
 let quitting=false;
 let token='';
-const defaults:Settings={endpoint:'',hasToken:false,rememberToken:false,startup:false,localControl:false,repository:'Hubercik97/jarvis-android',tts:'system',voice:'',lowPower:true,latitude:52.23,longitude:21.01};
+const defaults:Settings={endpoint:'',hasToken:false,rememberToken:false,startup:false,localControl:false,repository:'Hubercik97/jarvis-android',tts:'system',voice:'',lowPower:true,latitude:52.23,longitude:21.01,wake:{enabled:false,autoStart:false,sensitivity:.5,deviceId:'',confirmation:true}};
 let settings={...defaults};
 let encryptedToken='';
 let trustedUrl='';
 let controlBusy=false;
+let wake:WakeService;
+let wakeRequest=0;
+function wakePreferences(value:unknown):WakePreferences{
+ const p=value as WakePreferences;
+ if(!p||typeof p!=='object'||typeof p.enabled!=='boolean'||typeof p.autoStart!=='boolean'||typeof p.confirmation!=='boolean'||typeof p.deviceId!=='string'||p.deviceId.length>256||!Number.isFinite(p.sensitivity)||p.sensitivity<0||p.sensitivity>1)throw new Error('Nieprawidłowe ustawienia wybudzania');
+ return {enabled:p.enabled,autoStart:p.autoStart,sensitivity:p.sensitivity,deviceId:p.deviceId,confirmation:p.confirmation};
+}
 const configFile=()=>path.join(app.getPath('userData'),'settings.json');
 const snapshot=()=>({...settings,hasToken:Boolean(token)});
 async function save(){
@@ -27,12 +35,20 @@ async function boot(){
  try{
   const saved=JSON.parse(await readFile(configFile(),'utf8'));
   settings={...defaults,endpoint:saved.endpoint?endpointOf(saved.endpoint,!app.isPackaged):'',repository:repositoryOf(saved.repository||defaults.repository),startup:saved.startup===true,rememberToken:saved.rememberToken===true,localControl:saved.localControl===true,tts:saved.tts==='google'?'google':'system',voice:typeof saved.voice==='string'?saved.voice.slice(0,200):'',lowPower:saved.lowPower!==false,latitude:Number.isFinite(saved.latitude)?saved.latitude:52.23,longitude:Number.isFinite(saved.longitude)?saved.longitude:21.01};
+  if(saved.wake)try{settings.wake=wakePreferences(saved.wake);}catch{/* Invalid optional preferences stay disabled. */}
   if(settings.rememberToken && typeof saved.encryptedToken==='string' && safeStorage.isEncryptionAvailable() && (process.platform!=='linux'||safeStorage.getSelectedStorageBackend()!=='basic_text')){
    encryptedToken=saved.encryptedToken;token=safeStorage.decryptString(Buffer.from(encryptedToken,'base64'));
   }
  }catch{/* Missing, invalid or undecryptable settings start disconnected. */}
  window=new BrowserWindow({width:1260,height:820,minWidth:850,minHeight:640,backgroundColor:'#050c16',autoHideMenuBar:true,title:'Jarvis Desktop',webPreferences:{preload:path.join(__dirname,'preload.cjs'),contextIsolation:true,nodeIntegration:false,sandbox:true,webSecurity:true,backgroundThrottling:true}});
  trustedUrl=pathToFileURL(path.join(__dirname,'../../dist/index.html')).href;
+ wake=new WakeService(path.join(__dirname,'wake-worker.cjs'),app.isPackaged?path.join(process.resourcesPath,'wake'):path.join(app.getAppPath(),'resources/wake'),status=>{
+  if(!window.isDestroyed()&&!window.webContents.isDestroyed()){
+   window.webContents.send('wake-status',status);
+   window.webContents.setBackgroundThrottling(status.phase==='off'||status.phase==='error');
+  }
+  if(tray){tray.setToolTip(status.phase==='armed'?'Jarvis · mikrofon nasłuchuje lokalnie: Pobudka Jarvis':`Jarvis · ${status.message}`);refreshTray();}
+ });
  window.webContents.setWindowOpenHandler(()=>({action:'deny'}));
  window.webContents.on('will-navigate',event=>event.preventDefault());
  session.defaultSession.setPermissionRequestHandler((contents,permission,callback,details)=>{
@@ -40,6 +56,18 @@ async function boot(){
  });
  session.defaultSession.setPermissionCheckHandler((contents,permission,_origin,details)=>contents===window.webContents&&permission==='media'&&details.requestingUrl===trustedUrl);
  handle('settings',()=>snapshot());
+ handle('wake-settings',async(value:unknown)=>{const next=wakePreferences(value);const request=++wakeRequest;settings={...settings,wake:next};wake.stop();await save();if(request===wakeRequest&&next.enabled)wake.start(next.sensitivity);return next;});
+ handle('wake-control',(action:unknown,error:unknown)=>{
+  if(action==='stop'){wakeRequest++;if(typeof error==='string')wake.fail(error.slice(0,250));else wake.stop();}
+  else if(action==='start'){wakeRequest++;if(!settings.wake.enabled)throw new Error('Włącz wybudzanie głosowe w Ustawieniach');wake.start(settings.wake.sensitivity);}
+  else if(action==='pause')wake.pause();
+  else if(action==='ready')wake.ready();
+  else if(action==='resume'){if(settings.wake.enabled)wake.resume();}
+  else if(action==='status'){/* Read-only state replay for renderer startup. */}
+  else throw new Error('Nieprawidłowe sterowanie nasłuchem');
+  return wake.status;
+ });
+ ipcMain.on('wake-pcm',(event,value)=>{try{trusted(event as Electron.IpcMainInvokeEvent);wake.pcm(value);}catch{/* Drop untrusted or malformed audio; never log PCM. */}});
  handle('configure',async(input:Configure)=>{
   if(!input||typeof input!=='object') throw new Error('Nieprawidłowe ustawienia');
   const endpoint=endpointOf(input.endpoint,!app.isPackaged);
@@ -97,16 +125,18 @@ async function boot(){
  // A lightweight SVG-free tray image is decoded from a generated PNG at build time.
  tray=new Tray(nativeImage.createFromPath(path.join(__dirname,'../../dist/tray.png')));
  tray.setToolTip('Jarvis Desktop');
- tray.setContextMenu(Menu.buildFromTemplate([{label:'Pokaż Jarvisa',click:()=>{window.show();window.focus();}},{label:'Zakończ',click:()=>{quitting=true;app.quit();}}]));
+ function refreshTray(){tray.setContextMenu(Menu.buildFromTemplate([{label:'Pokaż Jarvisa',click:()=>{window.show();window.focus();}},{label:wake.status.phase==='armed'?'Mikrofon aktywny · Pobudka Jarvis':wake.status.message,enabled:false},{label:'Natychmiast wyłącz nasłuch',click:()=>{wakeRequest++;wake.stop();}},{label:'Zakończ',click:()=>{quitting=true;app.quit();}}]));}
+ refreshTray();
  tray.on('double-click',()=>window.show());
  window.on('close',event=>{if(!quitting){event.preventDefault();window.hide();}});
  window.on('show',()=>window.webContents.send('visibility',true));
  await window.loadFile(path.join(__dirname,'../../dist/index.html'));
+ if(settings.wake.enabled&&settings.wake.autoStart)wake.start(settings.wake.sensitivity);
  if(process.argv.includes('--hidden'))window.hide();
 }
 if(!app.requestSingleInstanceLock())app.quit();
 else{
  app.on('second-instance',()=>{if(window){window.show();window.focus();}});
- app.on('before-quit',()=>{quitting=true;});
+ app.on('before-quit',()=>{quitting=true;wake?.stop();});
  app.whenReady().then(boot).catch(()=>{dialog.showErrorBox('Jarvis','Nie udało się uruchomić aplikacji. Sprawdź uprawnienia do katalogu ustawień.');app.quit();});
 }

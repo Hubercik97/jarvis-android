@@ -1,5 +1,7 @@
 # Jarvis Desktop + Cloud
 
+Windows: [lokalne wybudzanie „Pobudka Jarvis” — ustawienia, prywatność i testy](docs/WINDOWS_WAKE_WORD.md).
+
 Nowy interfejs: [Holographic HUD 3D 0.4 — renderer, audio, testy i ograniczenia](docs/HOLOGRAM.md).
 
 **Główny kierunek: Windows + chmura.** Zobacz [instalację, funkcje, testy i ograniczenia wersji Desktop](docs/DESKTOP.md). Android pozostaje opcjonalnym klientem.

@@ -1,0 +1,31 @@
+Jarvis local Polish wake-phrase model
+
+pobudka-jarvis.onnx: custom classifier for the complete phrase "Pobudka Jarvis"
+and Polish spelling variants, authored for this project, Apache License 2.0.
+Training recipe, pinned input sources, copied source model cards and evaluation
+are in tools/wakeword-train/. Synthetic speech source datasets: CC0, according
+to the three copied Piper model cards. The synthetic fixture WAVs are generated
+test material, not recordings of the user and not an actor voice.
+The generated fixture WAVs are distributed under Apache License 2.0 with this
+package. The input dataset licenses above describe their training provenance.
+
+melspectrogram.onnx and embedding_model.onnx: feature models from openWakeWord
+v0.5.1 (https://github.com/dscripka/openWakeWord), using Google's speech embedding
+feature extractor (https://tfhub.dev/google/speech_embedding/1), Apache 2.0.
+The openWakeWord README architecture section explicitly identifies the feature
+extractor as Apache 2.0. This package does not include any of the pre-trained
+openWakeWord wake-word classifiers distributed under CC BY-NC-SA.
+
+Feature pipeline follows openWakeWord's 16 kHz PCM / 80 ms frame / 76 mel rows
+algorithm; the custom classifier consumes 24 consecutive 96-value embeddings.
+Copyright 2023 David Scripka (openWakeWord), Google (speech embedding extractor).
+See LICENSE-APACHE-2.0.txt for the license text.
+
+ONNX Runtime (Microsoft) is separately distributed under MIT in node_modules.
+No model or source TTS voice is fetched at runtime. No microphone recordings are
+saved by this feature. In-memory frames are used for offline recognition only.
+
+IMPORTANT: This is a test model evaluated on synthetic Polish voices and
+simulated gain/noise/reverberation. Those tests are not measurements at physical
+distances, television rejection, unseen real speakers, or false activations per
+hour. Validate on the target microphone/room before relying on it daily.

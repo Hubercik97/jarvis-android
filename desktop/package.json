@@ -1,6 +1,6 @@
 {
   "name": "jarvis-desktop",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Jarvis Desktop — personal cloud assistant",
   "author": "Jarvis contributors",
   "private": true,
@@ -42,9 +42,22 @@
     },
     "linux": {
       "category": "Utility"
-    }
+    },
+    "extraResources": [
+      {
+        "from": "resources/wake",
+        "to": "wake",
+        "filter": [
+          "**/*"
+        ]
+      }
+    ],
+    "asarUnpack": [
+      "node_modules/onnxruntime-node/bin/**/*"
+    ]
   },
   "dependencies": {
+    "onnxruntime-node": "1.24.3",
     "react": "19.3.1",
     "react-dom": "19.3.1",
     "three": "0.186.1"
