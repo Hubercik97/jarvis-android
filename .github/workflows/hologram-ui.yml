@@ -1,0 +1,40 @@
+name: Jarvis — hologram WebGL and audio
+on:
+  push:
+    paths: ['desktop/src/**', 'desktop/vite.hologram.config.ts', 'desktop/package*.json', 'hologram/**', 'index.html', 'app.js', 'cloud-ui.js', 'styles.css', 'sw.js', 'tools/hologram-smoke.py', '.github/workflows/hologram-ui.yml']
+  pull_request:
+    paths: ['desktop/src/**', 'desktop/vite.hologram.config.ts', 'desktop/package*.json', 'hologram/**', 'index.html', 'app.js', 'cloud-ui.js', 'styles.css', 'sw.js', 'tools/hologram-smoke.py', '.github/workflows/hologram-ui.yml']
+permissions:
+  contents: read
+concurrency:
+  group: hologram-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  webgl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: desktop/package-lock.json
+      - run: npm ci && npm run build:hologram
+        working-directory: desktop
+      - name: Generated PWA assets are current
+        run: git diff --exit-code -- hologram
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - run: python -m pip install playwright==1.62.0
+      - name: Real WebGL, PCM analysis, fallback and mobile layout
+        run: |
+          python -m http.server 8000 --bind 127.0.0.1 &
+          python tools/hologram-smoke.py
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: Jarvis-Hologram-Web-Screenshots
+          path: desktop/release/hologram*.png
+          if-no-files-found: ignore
+          retention-days: 14

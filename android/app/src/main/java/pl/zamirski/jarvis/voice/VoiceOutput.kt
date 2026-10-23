@@ -2,6 +2,8 @@ package pl.zamirski.jarvis.voice
 
 import android.content.Context
 import android.media.AudioAttributes
+import android.media.audiofx.Visualizer
+import kotlin.math.sqrt
 import android.media.MediaPlayer
 import android.os.Handler
 import android.os.Looper
@@ -37,6 +39,7 @@ class VoiceOutput(context: Context, private val listener: Listener) : TextToSpee
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main)
     private var cloudJob: Job? = null
     private var player: MediaPlayer? = null
+    private var visualizer: Visualizer? = null
     private var generation = 0
 
     /** Ostatni powód przejścia z głosu w chmurze na głos telefonu (do pokazania w Ustawieniach). */
@@ -49,6 +52,7 @@ class VoiceOutput(context: Context, private val listener: Listener) : TextToSpee
         fun onVoiceStatus(status: Status)
         fun onSpeakingStarted()
         fun onSpeakingFinished()
+        fun onVoiceEnergy(level: Float, available: Boolean) {}
     }
 
     var status: Status = Status.INITIALIZING
@@ -143,6 +147,7 @@ class VoiceOutput(context: Context, private val listener: Listener) : TextToSpee
 
     private fun speakDevice(text: String): Boolean {
         if (status != Status.READY) return false
+        listener.onVoiceEnergy(0f, false) // System TextToSpeech exposes no playback PCM/session.
         applySettings()
         counter += 1
         return tts.speak(text, TextToSpeech.QUEUE_FLUSH, null, "jarvis-$counter") == TextToSpeech.SUCCESS
@@ -192,6 +197,7 @@ class VoiceOutput(context: Context, private val listener: Listener) : TextToSpee
             }
             player = mp
             mp.start()
+            observePlayback(mp)
             listener.onSpeakingStarted()
             true
         } catch (e: Exception) {
@@ -201,7 +207,35 @@ class VoiceOutput(context: Context, private val listener: Listener) : TextToSpee
         }
     }
 
+    /** Only this player's session is analysed, never global device output (session 0). */
+    private fun observePlayback(mp: MediaPlayer) {
+        if (mp.audioSessionId == 0) return
+        try {
+            visualizer = Visualizer(mp.audioSessionId)
+            visualizer?.apply {
+                scalingMode = Visualizer.SCALING_MODE_AS_PLAYED
+                captureSize = Visualizer.getCaptureSizeRange()[0]
+                setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
+                    override fun onWaveFormDataCapture(v: Visualizer?, waveform: ByteArray?, rate: Int) {
+                        if (waveform == null || waveform.isEmpty()) return
+                        val rms = sqrt(waveform.sumOf { val x = ((it.toInt() and 255) - 128) / 128.0; x * x } / waveform.size).toFloat()
+                        main.post { if (player === mp) listener.onVoiceEnergy(rms.coerceIn(0f, 1f), true) }
+                    }
+                    override fun onFftDataCapture(v: Visualizer?, fft: ByteArray?, rate: Int) {}
+                }, minOf(20_000, Visualizer.getMaxCaptureRate()), true, false)
+                enabled = true
+            }
+        } catch (_: Exception) {
+            try { visualizer?.release() } catch (_: Exception) {}
+            visualizer = null
+            listener.onVoiceEnergy(0f, false)
+        }
+    }
+
     private fun releasePlayer() {
+        try { visualizer?.enabled = false; visualizer?.release() } catch (_: Exception) {}
+        visualizer = null
+        listener.onVoiceEnergy(0f, false)
         player?.let {
             try {
                 it.release()

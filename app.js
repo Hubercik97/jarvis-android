@@ -14,7 +14,7 @@
 (() => {
   'use strict';
 
-  const APP_VERSION = '0.2.0';
+  const APP_VERSION = '0.4.0';
   const LANG = 'pl-PL';
 
   // Adres przyszłego backendu (etap 2). Gdy jest null, Jarvis nie udaje AI.
@@ -580,7 +580,7 @@
 
   // --------------------------------------------------------- Start
   function init() {
-    ui.version.textContent = `v${APP_VERSION} · etap 1 · AI: niepołączone`;
+    ui.version.textContent = `v${APP_VERSION} · HUD 3D · AI: niepołączone`;
     renderNet();
 
     if (!window.isSecureContext) {

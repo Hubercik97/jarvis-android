@@ -10,6 +10,7 @@ const {_electron}=require('playwright');const assert=require('node:assert/strict
   assert.equal(await page.evaluate(()=>typeof require),'undefined');
   const settings=await page.evaluate(()=>window.jarvis.settings());assert.equal(settings.hasToken,false);
   await assert.rejects(page.evaluate(async()=>{const s=await window.jarvis.settings();return window.jarvis.configure({...s,endpoint:'http://127.0.0.1:8787',token:'local-fixture-token'});}));
+  await page.waitForFunction(()=>Number(document.querySelector('.scene-canvas')?.dataset.fps)>0);
   const composer=await page.locator('.composer').boundingBox();assert.ok(composer.y+composer.height<=await page.evaluate(()=>innerHeight));
   await page.screenshot({path:path.resolve(__dirname,'../release/jarvis-installed.png')});
   console.log('PASS: NSIS-installed application launches, loads packaged preload/assets, isolates renderer and enforces HTTPS');

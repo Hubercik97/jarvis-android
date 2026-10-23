@@ -74,14 +74,14 @@
       const health = await api('/health');
       if (health.auth !== 'ok' || !health.configured) throw new Error('Sprawdź token oraz konfigurację modelu na serwerze.');
       enabled = true; history = []; conversation = null;
-      $('version').textContent = 'v0.2.0 · AI: połączone';
+      $('version').textContent = 'v0.4.0 · HUD 3D · AI: połączone';
       $('chipAi').textContent = `AI: ${health.provider || 'chmura'}`; $('chipAi').dataset.state = 'ok';
       status('Połączono. Wiadomości będą wysyłane do dostawcy AI. Historia chmurowa jest zapisywana po włączeniu opcji poniżej.');
     } catch (error) { enabled = false; token = ''; report(error); }
   });
   $('cloudDisconnect').addEventListener('click', () => {
     enabled = false; token = ''; history = []; conversation = null;
-    $('version').textContent = 'v0.2.0 · AI: niepołączone';
+    $('version').textContent = 'v0.4.0 · HUD 3D · AI: niepołączone';
     $('chipAi').textContent = 'AI: niepołączone'; $('chipAi').dataset.state = 'off';
     for (const id of ['cloudMemory','cloudTasks','cloudConversations','cloudTranscript']) $(id).replaceChildren();
     status('Rozłączono. Token usunięty z pamięci karty.');
@@ -101,6 +101,7 @@
   });
   window.jarvisCloud = {
     get enabled() { return enabled; },
+    weather() { return api('/weather?latitude=52.23&longitude=21.01'); },
     async reply(text) {
       if (busy) return 'Poczekaj na zakończenie poprzedniej odpowiedzi.';
       busy = true;

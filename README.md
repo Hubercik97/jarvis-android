@@ -1,5 +1,7 @@
 # Jarvis Desktop + Cloud
 
+Nowy interfejs: [Holographic HUD 3D 0.4 — renderer, audio, testy i ograniczenia](docs/HOLOGRAM.md).
+
 **Główny kierunek: Windows + chmura.** Zobacz [instalację, funkcje, testy i ograniczenia wersji Desktop](docs/DESKTOP.md). Android pozostaje opcjonalnym klientem.
 
 Poprzedni przyrost chmurowy: [audyt, OpenAI, D1, zadania, panel i ograniczenia](docs/CLOUD_AI.md).
