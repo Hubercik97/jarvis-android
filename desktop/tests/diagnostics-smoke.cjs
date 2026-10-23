@@ -9,6 +9,10 @@ const {randomUUID}=require('node:crypto');
   if(req.url==='/health'){
    if(mode==='unauthorized'){res.writeHead(401);res.end(JSON.stringify({error:token}));return;}
    if(mode==='invalid'){res.end('null');return;}
+   if(mode==='html'){res.setHeader('content-type','text/html');res.end('<html>'+token+'</html>');return;}
+   if(mode==='missing-route'){res.writeHead(404);res.end('{}');return;}
+   if(mode==='missing-token'){res.end(JSON.stringify({auth:'missing',configured:true}));return;}
+   if(mode==='no-storage'){res.end(JSON.stringify({auth:'ok',configured:true,capabilities:{history:false}}));return;}
    data={auth:'ok',configured:true,provider:'fixture',model:'local-test'};
   }else if(req.url==='/tasks')data={tasks:[]};
   else if(req.url==='/stt'){counts.stt++;data={text:'Ile jest dwa plus dwa?'};}
@@ -45,6 +49,10 @@ const {randomUUID}=require('node:crypto');
   await app.evaluate(()=>globalThis.__approve({response:1}));assert.match(await page.evaluate(()=>window.__pendingControl),/cofnięta/);assert.equal(await app.evaluate(()=>globalThis.__opened),0);
   mode='unauthorized';await page.getByRole('button',{name:'Testuj połączenie API',exact:true}).click();await page.waitForFunction(async()=>(await window.jarvis.diagnostics()).cloud.state==='unauthorized');
   mode='invalid';await page.getByRole('button',{name:'Testuj połączenie API',exact:true}).click();await page.waitForFunction(async()=>(await window.jarvis.diagnostics()).cloud.state==='invalid_response');
+  for(const [failure,state] of [['html','endpoint_not_api'],['missing-route','endpoint_not_api'],['missing-token','server_token_missing'],['no-storage','storage_not_ready']]){
+   mode=failure;await page.getByRole('button',{name:'Testuj połączenie API',exact:true}).click();await page.waitForFunction(async expected=>(await window.jarvis.diagnostics()).cloud.state===expected,state);
+   assert.ok(!(await page.locator('body').innerText()).includes(token),'no token from an invalid Worker can enter the UI');
+  }
   mode='ok';await page.getByRole('button',{name:'Testuj połączenie API',exact:true}).click();await page.waitForFunction(async()=>(await window.jarvis.diagnostics()).cloud.state==='authenticated');
   await page.evaluate(()=>{
    const original=navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);window.__streams=[];window.__denyMic=true;

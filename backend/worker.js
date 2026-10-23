@@ -570,7 +570,26 @@ export default {
         tts: ttsEnabled(env),
         stt: Boolean(cleanSecret(env.OPENAI_API_KEY)),
         background: Boolean(env.TASK_QUEUE && env.DB),
+        api_version: 1,
+        capabilities: {
+          chat: true, history: Boolean(env.DB), tasks: Boolean(env.DB),
+          memory: Boolean(env.MEMORY), stt: Boolean(cleanSecret(env.OPENAI_API_KEY)),
+          tts: ttsEnabled(env), weather: true, developer: true,
+        },
       });
+    }
+    // Reserved API routes must never fall through to the SPA's index.html.
+    // Existing Android POST contracts and authentication remain unchanged.
+    if (["/health", "/chat", "/tts", "/stt"].includes(url.pathname) &&
+        request.method !== (url.pathname === "/health" ? "GET" : "POST")) {
+      if (url.pathname !== "/health") {
+        const auth = authState(request, env);
+        if (auth === "missing") return json({ error: "Brak tokenu aplikacji" }, 503);
+        if (auth !== "ok") return json({ error: "Nieprawidłowy token aplikacji" }, 401);
+      }
+      const response = json({ error: "Niedozwolona metoda API" }, 405);
+      response.headers.set("Allow", url.pathname === "/health" ? "GET" : "POST");
+      return response;
     }
     if (url.pathname === "/tts" && request.method === "POST") {
       const auth = authState(request, env);

@@ -3,6 +3,17 @@ import {pathToFileURL} from 'node:url';
 import {appendFileSync} from 'node:fs';
 const TARGET='https://jarvis-android.lunvra-golf.workers.dev';
 const routes=['/health','/conversations','/memory','/tasks','/projects','/stt','/tts','/chat'];
+export async function inspectWorkerSettings(apiToken,accountId,fetcher=fetch){
+ if(!apiToken||!accountId)return {state:'credentials_unavailable'};
+ try{
+  const res=await fetcher(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/workers/scripts/jarvis-android/settings`,{method:'GET',headers:{authorization:`Bearer ${apiToken}`},redirect:'error',signal:AbortSignal.timeout(15000)});
+  if(!res.ok)return {state:'unavailable',status:res.status};
+  const body=await res.json();if(body.success!==true||!Array.isArray(body.result?.bindings))return {state:'invalid_response'};
+  const bindings=body.result.bindings;
+  const has=(name,type)=>bindings.some(b=>b.name===name&&b.type===type);
+  return {state:'inspected',appTokenSecret:has('APP_TOKEN','secret_text'),openaiSecret:has('OPENAI_API_KEY','secret_text'),anthropicSecret:has('ANTHROPIC_API_KEY','secret_text'),db:has('DB','d1'),memory:has('MEMORY','kv_namespace'),assets:has('ASSETS','assets')};
+ }catch{return {state:'network_error'};}
+}
 export async function probeApi(origin=TARGET,token='',fetcher=fetch){
  const url=new URL(origin);
  if(url.origin!==TARGET||url.pathname!=='/'||url.search||url.hash||url.username||url.password)throw new Error('Dozwolony jest wyłącznie wskazany Worker HTTPS.');
@@ -32,10 +43,12 @@ export async function probeApi(origin=TARGET,token='',fetcher=fetch){
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
  try{
-  const report=await probeApi(TARGET,process.env.JARVIS_PROBE_TOKEN||'');console.log(JSON.stringify(report,null,2));
+  const report=await probeApi(TARGET,process.env.JARVIS_PROBE_TOKEN||'');
+  report.workerSettings=await inspectWorkerSettings(process.env.CLOUDFLARE_API_TOKEN,process.env.CLOUDFLARE_ACCOUNT_ID);
+  console.log(JSON.stringify(report,null,2));
   if(process.env.GITHUB_ACTIONS==='true'){
    console.error('::notice title=Cloud API audit::'+JSON.stringify(report));
-   const summary=report.checks.map(c=>`${c.authenticated?'AUTH ':''}${c.route}=${c.status??'NETWORK_ERROR'}/${c.html?'HTML':c.json?'JSON':'other'}${c.auth?'/'+c.auth:''}`).join('; ');
+   const summary=report.checks.map(c=>`${c.authenticated?'AUTH ':''}${c.route}=${c.status??'NETWORK_ERROR'}/${c.html?'HTML':c.json?'JSON':'other'}${c.auth?'/'+c.auth:''}`).join('; ')+'; Worker settings '+JSON.stringify(report.workerSettings);
    if(process.env.GITHUB_OUTPUT)appendFileSync(process.env.GITHUB_OUTPUT,`summary=API audit: ${summary}\n`);
   }
  }

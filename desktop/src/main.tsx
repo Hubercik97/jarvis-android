@@ -77,7 +77,7 @@ function App(){
   if(wakeStatus.phase!=='paused'||speaking||busy||recording||transcribing||wakeSession.current?.active)return;
   const timeout=setTimeout(()=>void bridge?.wakeControl('resume'),600);return()=>clearTimeout(timeout);
  },[wakeStatus,speaking,busy,recording,transcribing,wakeStage]);
- async function health(){setErrorState(false);try{const h=await bridge.api('/health');const ok=h.auth==='ok'&&h.configured;setOnline(ok);setStatus(ok?`Połączono · ${h.provider} · ${h.model}${h.background?' · kolejka aktywna':''}`:'Serwer odpowiada, lecz token lub model nie jest skonfigurowany.');return ok;}catch(e){setOnline(false);report(e);return false;}}
+ async function health(){setErrorState(false);try{const h=await bridge.api('/health');if(h.capabilities?.history===false)throw new Error('Token i API działają, ale Worker nie ma bazy D1 (DB) wymaganej do rozmów Desktop. Podłącz istniejącą bazę i sprawdź migracje.');const ok=h.auth==='ok'&&h.configured;setOnline(ok);setStatus(ok?`Połączono · ${h.provider} · ${h.model}${h.background?' · kolejka aktywna':''}`:'Token poprawny, ale Worker wymaga skonfigurowania dostawcy AI.');return ok;}catch(e){setOnline(false);report(e);return false;}}
  async function save(){if(!settings)return;try{const updated=await bridge.configure({...settings,endpoint,...(token?{token}:{})});setSettings(updated);setToken('');await health();}catch(e){report(e);}}
  async function refreshTasks(){try{setTasks((await bridge.api('/tasks')).tasks);setTasksKnown(true);}catch(e){report(e);}}
  async function refreshMemory(){try{setFacts((await bridge.api('/memory')).facts);setConversations((await bridge.api('/conversations')).conversations);}catch(e){report(e);}}

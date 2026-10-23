@@ -1,0 +1,25 @@
+# Review only. Do not deploy until the owner confirms the production change.
+# Copy to ignored wrangler.owner.toml; replace the ID with an EXISTING D1 database.
+# First copy ALL existing bindings from the Worker's settings. Never drop them.
+name = "jarvis-android"
+main = "entry.js"
+compatibility_date = "2026-10-01"
+keep_vars = true
+
+[observability]
+enabled = false
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/projects", "/projects/*", "/health", "/stt", "/weather", "/developer/project", "/chat", "/tts", "/memory", "/memory/*", "/tasks", "/tasks/*", "/conversations", "/conversations/*"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "REPLACE_WITH_EXISTING_DATABASE_NAME"
+database_id = "REPLACE_WITH_EXISTING_DATABASE_ID"
+migrations_dir = "migrations"
+
+# If the Worker already uses MEMORY, TASK_QUEUE or other bindings, retain their
+# exact current IDs/configuration here. No resources or secrets are created here.
+# APP_TOKEN and provider keys stay in Cloudflare Secrets, never in this file.

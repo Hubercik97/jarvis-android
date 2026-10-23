@@ -4,6 +4,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import {cpus,totalmem} from 'node:os';
 import {publicError} from './public-error.cjs';
+import {decodeCloudResponse,CloudProtocolError} from './cloud-protocol.cjs';
 import { endpointOf, repositoryOf, actionOf, apiPath } from './policy.cjs';
 import {WakeService} from './wake-service.cjs';
 import type { Settings, Configure, WakePreferences, CloudCheck } from '../shared/types.js';
@@ -109,12 +110,11 @@ async function boot(){
   let response:Response;
   try{response=await fetch(settings.endpoint+api,{method,headers:{'x-jarvis-token':token,...(data?{'content-type':'application/json'}:{})},body:data,redirect:'error',signal:AbortSignal.timeout(api==='/health'?8_000:100_000)});}
   catch{if(api==='/health')cloudCheck={state:'network_error',https:settings.endpoint.startsWith('https://'),hasToken:Boolean(token),checkedAt:new Date().toISOString()};throw new Error('Brak połączenia z API. Sprawdź adres HTTPS, internet i certyfikat serwera.');}
-  const text=await response.text();
+  let text:string;try{text=await response.text();}catch{if(api==='/health')cloudCheck={...cloudCheck,state:'network_error',checkedAt:new Date().toISOString()};throw new Error('Przerwano pobieranie odpowiedzi API. Sprawdź połączenie z chmurą.');}
   if(Buffer.byteLength(text)>8_000_000) throw new Error('Za duża odpowiedź serwera');
-  let result;try{result=JSON.parse(text);}catch{if(api==='/health')cloudCheck={...cloudCheck,state:'invalid_response',checkedAt:new Date().toISOString()};throw new Error('Serwer nie udostępnia poprawnego API Jarvisa');}
-  if(!result||typeof result!=='object'||Array.isArray(result)){if(api==='/health')cloudCheck={...cloudCheck,state:'invalid_response',checkedAt:new Date().toISOString()};throw new Error('Nieprawidłowa odpowiedź API Jarvisa');}
-  if(api==='/health')cloudCheck={state:response.status===401||response.status===403||result.auth==='invalid'?'unauthorized':!response.ok||result.auth!=='ok'?'invalid_response':result.configured?'authenticated':'provider_not_ready',https:settings.endpoint.startsWith('https://'),hasToken:Boolean(token),checkedAt:new Date().toISOString()};
-  if(!response.ok)throw new Error(response.status===401||response.status===403?'Nieprawidłowy token lub brak dostępu do API.':response.status===429?'Limit wywołań API został wykorzystany.':`Usługa chmurowa jest niedostępna (HTTP ${response.status}).`);
+  let result;try{result=decodeCloudResponse(response.status,response.headers.get('content-type')||'',text,api==='/health');}
+  catch(error){if(api==='/health')cloudCheck={state:error instanceof CloudProtocolError?error.state:'invalid_response',https:settings.endpoint.startsWith('https://'),hasToken:Boolean(token),checkedAt:new Date().toISOString(),httpStatus:response.status};throw error;}
+  if(api==='/health')cloudCheck={state:!result.configured?'provider_not_ready':result.capabilities?.history===false?'storage_not_ready':'authenticated',https:settings.endpoint.startsWith('https://'),hasToken:Boolean(token),checkedAt:new Date().toISOString(),httpStatus:response.status};
   if(api==='/health')for(const name of ['provider','model'])if(typeof result[name]==='string')result[name]=publicError(new Error(result[name]),[token]);
   return result;
  }

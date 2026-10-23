@@ -10,3 +10,4 @@ desktop/dist/
 desktop/dist-electron/
 desktop/release/
 backend/wrangler.desktop-local.toml
+backend/wrangler.owner.toml
