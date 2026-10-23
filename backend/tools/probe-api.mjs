@@ -1,5 +1,6 @@
 // Read-only API audit. Never prints response bodies, headers, tokens or private records.
 import {pathToFileURL} from 'node:url';
+import {appendFileSync} from 'node:fs';
 const TARGET='https://jarvis-android.lunvra-golf.workers.dev';
 const routes=['/health','/conversations','/memory','/tasks','/projects','/stt','/tts','/chat'];
 export async function probeApi(origin=TARGET,token='',fetcher=fetch){
@@ -30,6 +31,13 @@ export async function probeApi(origin=TARGET,token='',fetcher=fetch){
  return {origin:url.origin,checkedAt:new Date().toISOString(),readOnly:true,checks};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
- try{const report=await probeApi(TARGET,process.env.JARVIS_PROBE_TOKEN||'');console.log(JSON.stringify(report,null,2));if(process.env.GITHUB_ACTIONS==='true')console.error('::notice title=Cloud API audit::'+JSON.stringify(report));}
+ try{
+  const report=await probeApi(TARGET,process.env.JARVIS_PROBE_TOKEN||'');console.log(JSON.stringify(report,null,2));
+  if(process.env.GITHUB_ACTIONS==='true'){
+   console.error('::notice title=Cloud API audit::'+JSON.stringify(report));
+   const summary=report.checks.map(c=>`${c.authenticated?'AUTH ':''}${c.route}=${c.status??'NETWORK_ERROR'}/${c.html?'HTML':c.json?'JSON':'other'}${c.auth?'/'+c.auth:''}`).join('; ');
+   if(process.env.GITHUB_OUTPUT)appendFileSync(process.env.GITHUB_OUTPUT,`summary=API audit: ${summary}\n`);
+  }
+ }
  catch{console.error('Nie można wykonać audytu wskazanego Workera.');process.exitCode=1;}
 }

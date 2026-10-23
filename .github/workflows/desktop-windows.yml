@@ -24,9 +24,12 @@ jobs:
         with:
           node-version: 24
       - name: Read-only compatibility audit of the owner's Worker
+        id: audit
         run: node backend/tools/probe-api.mjs > cloud-api-audit.json
         env:
           JARVIS_PROBE_TOKEN: ${{ secrets.JARVIS_APP_TOKEN }}
+      - name: ${{ steps.audit.outputs.summary }}
+        run: echo 'Read-only API results saved. No deployment or paid calls.'
       - uses: actions/upload-artifact@v4
         with:
           name: cloud-api-audit
