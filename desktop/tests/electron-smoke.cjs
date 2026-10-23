@@ -58,7 +58,7 @@ const {_electron}=require('playwright');const assert=require('node:assert/strict
   await page.waitForFunction(()=>document.querySelector('.scene-canvas')?.dataset.audioSource==='none'&&Number(document.querySelector('.scene-canvas').dataset.audioLevel)<.01);
   console.log('PASS: real media-element TTS waveform drives the orb; stop clears the signal');
   // Confirm-deny path exercises the native-agent boundary without touching the OS.
-  await page.evaluate(async()=>{const settings=await window.jarvis.settings();await window.jarvis.configure({...settings,localControl:true});});
+  await page.evaluate(()=>window.jarvis.localControl(true));
   await application.evaluate(({dialog})=>{dialog.showMessageBox=async()=>({response:0,checkboxChecked:false});});
   const cancelled=await page.evaluate(()=>window.jarvis.control('open_documents'));assert.equal(cancelled.ok,false);
   await application.evaluate(({dialog,shell})=>{dialog.showMessageBox=async()=>({response:1,checkboxChecked:false});shell.openPath=async()=>'';});

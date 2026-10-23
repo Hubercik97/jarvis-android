@@ -94,3 +94,5 @@ Do odbioru na docelowym laptopie wykonaj co najmniej:
 | Celeron / 4 GB | 10 minut nasłuchu w zasobniku, potem rozmowa | Średni CPU, pamięć procesu, opóźnienie i komfort pracy |
 
 Nie wykonujemy automatycznych nagrań tych prób. Jeśli użytkownik chce zebrać próbki do poprawy modelu, wymaga to jego osobnej zgody na nagrywanie i przechowywanie.
+
+Poprawki błędów i diagnostyka wersji 0.5.1: [WINDOWS_DIAGNOSTICS.md](WINDOWS_DIAGNOSTICS.md).

@@ -51,6 +51,10 @@ jobs:
         run: node tests/wake-electron-smoke.cjs
       - name: Manual interruption and microphone recorder failure
         run: node tests/wake-interrupt-smoke.cjs
+      - name: Microphone, cloud diagnostics and explicit local-control consent
+        run: node tests/diagnostics-smoke.cjs
+      - name: Realtime quiet wake benchmark (runner CPU, not N4000 certification)
+        run: node tests/wake-benchmark.cjs > release/wake-benchmark.json
       - name: Build unsigned Windows x64 NSIS installer
         run: npm run dist:win
         env:
@@ -86,5 +90,7 @@ jobs:
             desktop/release/jarvis-desktop.png
             desktop/release/jarvis-installed.png
             desktop/release/jarvis-wake-complete.png
+            desktop/release/jarvis-diagnostics.png
+            desktop/release/wake-benchmark.json
           if-no-files-found: error
           retention-days: 14
