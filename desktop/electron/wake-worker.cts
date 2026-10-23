@@ -1,0 +1,47 @@
+// Offline-only DSP/inference worker. No network, microphone, filesystem writes or recordings.
+import {parentPort,workerData} from 'node:worker_threads';
+import path from 'node:path';
+import * as ort from 'onnxruntime-node';
+const port=parentPort!;
+let mel:ort.InferenceSession,embedding:ort.InferenceSession,classifier:ort.InferenceSession;
+let previous=new Float32Array(480),spectrum=new Float32Array(76*32).fill(1),features=new Float32Array(24*96),frames=0;
+let busy=false,epoch=0,resetPending=false;
+function reset(){previous.fill(0);spectrum.fill(1);features.fill(0);frames=0;resetPending=false;}
+async function load(){
+ const options:ort.InferenceSession.SessionOptions={executionProviders:['cpu'],intraOpNumThreads:1,interOpNumThreads:1,graphOptimizationLevel:'all'};
+ mel=await ort.InferenceSession.create(path.join(workerData.directory,'melspectrogram.onnx'),options);
+ embedding=await ort.InferenceSession.create(path.join(workerData.directory,'embedding_model.onnx'),options);
+ classifier=await ort.InferenceSession.create(path.join(workerData.directory,'pobudka-jarvis.onnx'),options);
+ port.postMessage({type:'ready'});
+}
+port.on('message',async(message)=>{
+ if(message.type==='reset'){
+  epoch=message.epoch;resetPending=true;
+  // An ONNX run may still read the backing arrays. Never mutate them mid-run.
+  if(!busy)reset();return;
+ }
+ if(message.type!=='pcm'||message.epoch!==epoch||!classifier)return;
+ if(busy){port.postMessage({type:'skipped',epoch:message.epoch,frame:message.frame});return;}
+ busy=true;
+ try{
+  const start=performance.now(),chunk=new Float32Array(message.samples),frameEpoch=message.epoch;
+  if(chunk.length!==1280||!chunk.every(Number.isFinite))throw new Error('Invalid PCM frame');
+  const input=new Float32Array(1760);input.set(previous);for(let i=0;i<1280;i++)input[i+480]=Math.max(-1,Math.min(1,chunk[i]))*32767;
+  previous=input.slice(-480);
+  const m=await mel.run({input:new ort.Tensor('float32',input,[1,1760])});
+  if(frameEpoch!==epoch)return;
+  const raw=m[mel.outputNames[0]].data as Float32Array;
+  const count=raw.length;if(count!==8*32)throw new Error('Unexpected mel dimensions');
+  spectrum.copyWithin(0,count);for(let i=0;i<count;i++)spectrum[spectrum.length-count+i]=raw[i]/10+2;
+  const e=await embedding.run({input_1:new ort.Tensor('float32',spectrum,[1,76,32,1])});
+  if(frameEpoch!==epoch)return;
+  const values=e[embedding.outputNames[0]].data as Float32Array;
+  if(values.length!==96)throw new Error('Unexpected embedding dimensions');
+  features.copyWithin(0,96);features.set(values,features.length-96);frames++;
+  let score=0;
+  if(frames>=24){const c=await classifier.run({[classifier.inputNames[0]]:new ort.Tensor('float32',features,[1,24*96])});score=Number(c[classifier.outputNames[1]].data[1]);}
+  if(frameEpoch===epoch)port.postMessage({type:'score',score,ms:performance.now()-start,epoch:frameEpoch,frame:message.frame});
+ }catch{port.postMessage({type:'error',message:'Błąd lokalnego modelu wybudzania.'});}
+ finally{busy=false;if(resetPending)reset();}
+});
+void load().catch(()=>port.postMessage({type:'error',message:'Nie można wczytać lokalnego modelu wybudzania. Napraw instalację Jarvisa.'}));

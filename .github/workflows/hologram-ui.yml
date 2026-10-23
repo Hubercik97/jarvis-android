@@ -1,4 +1,6 @@
 name: Jarvis — hologram WebGL and audio
+env:
+  ONNXRUNTIME_NODE_INSTALL: skip
 on:
   push:
     paths: ['desktop/src/**', 'desktop/vite.hologram.config.ts', 'desktop/package*.json', 'hologram/**', 'index.html', 'app.js', 'cloud-ui.js', 'styles.css', 'sw.js', 'tools/hologram-smoke.py', '.github/workflows/hologram-ui.yml']

@@ -5,6 +5,9 @@ on:
   pull_request:
     paths: ['desktop/**', 'backend/**', '.github/workflows/desktop-windows.yml']
   workflow_dispatch:
+env:
+  # CPU runtime is bundled; do not fetch unused CUDA/TensorRT libraries.
+  ONNXRUNTIME_NODE_INSTALL: skip
 permissions:
   contents: read
 concurrency:
@@ -44,6 +47,10 @@ jobs:
       - run: npm run build
       - name: Electron window and IPC smoke test (local fixture API)
         run: node tests/electron-smoke.cjs
+      - name: Offline Polish wake phrase and minimized conversation cycle
+        run: node tests/wake-electron-smoke.cjs
+      - name: Manual interruption and microphone recorder failure
+        run: node tests/wake-interrupt-smoke.cjs
       - name: Build unsigned Windows x64 NSIS installer
         run: npm run dist:win
         env:
@@ -78,5 +85,6 @@ jobs:
             desktop/release/*.sha256
             desktop/release/jarvis-desktop.png
             desktop/release/jarvis-installed.png
+            desktop/release/jarvis-wake-complete.png
           if-no-files-found: error
           retention-days: 14

@@ -1,4 +1,4 @@
-export type VisualState='IDLE'|'LISTENING'|'THINKING'|'SPEAKING'|'ERROR';
+export type VisualState='IDLE'|'WAKE_WORD_DETECTED'|'LISTENING'|'THINKING'|'SPEAKING'|'ERROR';
 export type SignalFrame={source:'none'|'microphone'|'tts';available:boolean;rms:number;peak:number;bands:number[];wave:number[]};
 export const silentFrame=():SignalFrame=>({source:'none',available:false,rms:0,peak:0,bands:Array(24).fill(0),wave:Array(48).fill(0)});
 export function measureSignal(wave:Float32Array,frequency:Uint8Array,source:SignalFrame['source']):SignalFrame{

@@ -10,7 +10,7 @@ export function Hologram({state,signal,lowPower,onPress}:{state:VisualState;sign
   <div className="scene-crosshair" aria-hidden="true"/>
   <div className="scene-canvas" ref={host}/>
   <button className="scene-trigger" onClick={onPress} aria-label={state==='SPEAKING'?'Przerwij wypowiedź':'Rozpocznij lub zakończ nagrywanie'} title="Mikrofon / przerwij głos"/>
-  <div className="scene-caption"><span className="state-led"/>{state}<small>{state==='SPEAKING'?'ODPOWIEDŹ GŁOSOWA':state==='LISTENING'?'SŁUCHAM TWOJEGO POLECENIA':state==='THINKING'?'PRZETWARZANIE POLECENIA':state==='ERROR'?'SPRAWDŹ KOMUNIKAT SYSTEMU':'GOTOWY NA TWOJE POLECENIE'}</small></div>
+  <div className="scene-caption"><span className="state-led"/>{state}<small>{state==='WAKE_WORD_DETECTED'?'POBUDKA · AKTYWACJA':state==='SPEAKING'?'ODPOWIEDŹ GŁOSOWA':state==='LISTENING'?'SŁUCHAM TWOJEGO POLECENIA':state==='THINKING'?'PRZETWARZANIE POLECENIA':state==='ERROR'?'SPRAWDŹ KOMUNIKAT SYSTEMU':'GOTOWY NA TWOJE POLECENIE'}</small></div>
   <div className="scene-metrics"><span>{metrics?`${metrics.renderer} / ${metrics.quality}`:'INICJALIZACJA'}</span><span>{metrics?`${metrics.particles} PTS · ${metrics.paused?'PAUZA':metrics.fps+' FPS'}`:'—'}</span></div>
  </section>;
 }

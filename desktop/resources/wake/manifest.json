@@ -1,0 +1,45 @@
+{
+  "version": "0.1-beta",
+  "phrase": "Pobudka Jarvis / Pobudka Dżarwis",
+  "sample_rate": 16000,
+  "frame_samples": 1280,
+  "embedding_window": [
+    24,
+    96
+  ],
+  "default_threshold": 0.9,
+  "consecutive_frames": 2,
+  "classification": "experimental; synthetic development evaluation only",
+  "files": [
+    {
+      "file": "melspectrogram.onnx",
+      "bytes": 1087958,
+      "sha256": "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f"
+    },
+    {
+      "file": "embedding_model.onnx",
+      "bytes": 1326578,
+      "sha256": "70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f"
+    },
+    {
+      "file": "pobudka-jarvis.onnx",
+      "bytes": 623202,
+      "sha256": "5c140fa9e0624b145d106d3e2c1d7fd0b287908ec16137aca99a71bc3408fb41"
+    },
+    {
+      "file": "evaluation.json",
+      "bytes": 392616,
+      "sha256": "a64b92aa9e53a80054c8e48c329a43303d17518bac9effe76a742e742a6979d1"
+    },
+    {
+      "file": "LICENSE-APACHE-2.0.txt",
+      "bytes": 11357,
+      "sha256": "c71d239df91726fc519c6eb72d318ec65820627232b2f796219e87dcf35d0ab4"
+    },
+    {
+      "file": "NOTICE.txt",
+      "bytes": 1956,
+      "sha256": "c5e738f97cc4787d159b95aac9d57a819980cece115c25ac55cbd92c4c385895"
+    }
+  ]
+}

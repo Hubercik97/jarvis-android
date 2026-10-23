@@ -1,0 +1,40 @@
+{
+  "downloads": [
+    {
+      "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/melspectrogram.onnx",
+      "destination": "features/melspectrogram.onnx",
+      "sha256": "ba2b0e0f8b7b875369a2c89cb13360ff53bac436f2895cced9f479fa65eb176f",
+      "license": "Apache-2.0; feature model only, not a bundled wake-word classifier"
+    },
+    {
+      "url": "https://github.com/dscripka/openWakeWord/releases/download/v0.5.1/embedding_model.onnx",
+      "destination": "features/embedding_model.onnx",
+      "sha256": "70d164290c1d095d1d4ee149bc5e00543250a7316b59f31d056cff7bd3075c1f",
+      "license": "Apache-2.0; feature model only, not a bundled wake-word classifier"
+    },
+    {
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-pl_PL-darkman-medium-int8.tar.bz2",
+      "destination": "darkman.tar.bz2",
+      "archive": true,
+      "sha256": "0ec47b7d591e48913da887ea7e81287f4ef621d9c5aa1848700d2d736ed3f99c",
+      "dataset_license": "CC0; see copied MODEL_CARD",
+      "used_for": "synthetic training and evaluation only; not shipped voices"
+    },
+    {
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-pl_PL-mc_speech-medium-int8.tar.bz2",
+      "destination": "mc_speech.tar.bz2",
+      "archive": true,
+      "sha256": "c67a1b152bced5cb0d8aaa97fa12700aab743feaa756e1ac903cc7e92174f171",
+      "dataset_license": "CC0; see copied MODEL_CARD",
+      "used_for": "synthetic training and evaluation only; not shipped voices"
+    },
+    {
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-pl_PL-gosia-medium-int8.tar.bz2",
+      "destination": "gosia.tar.bz2",
+      "archive": true,
+      "sha256": "72acac4c4b031725c41a61b3af0314a3d30e1ec2cd83ee410ea5f9e6d2d9d4fb",
+      "dataset_license": "CC0; see copied MODEL_CARD",
+      "used_for": "synthetic training and evaluation only; not shipped voices"
+    }
+  ]
+}
