@@ -30,6 +30,6 @@ export async function probeApi(origin=TARGET,token='',fetcher=fetch){
  return {origin:url.origin,checkedAt:new Date().toISOString(),readOnly:true,checks};
 }
 if(process.argv[1]&&import.meta.url===pathToFileURL(process.argv[1]).href){
- try{console.log(JSON.stringify(await probeApi(TARGET,process.env.JARVIS_PROBE_TOKEN||''),null,2));}
+ try{const report=await probeApi(TARGET,process.env.JARVIS_PROBE_TOKEN||'');console.log(JSON.stringify(report,null,2));if(process.env.GITHUB_ACTIONS==='true')console.error('::notice title=Cloud API audit::'+JSON.stringify(report));}
  catch{console.error('Nie można wykonać audytu wskazanego Workera.');process.exitCode=1;}
 }
