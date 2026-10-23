@@ -15,7 +15,12 @@ export class WakeMicrophone{
    await ctx.audioWorklet.addModule(new URL('../public/wake-capture.js',import.meta.url).href);
    if(generation!==this.generation)return;
    const node=this.node=new AudioWorkletNode(ctx,'jarvis-wake-capture');
-   node.port.onmessage=event=>{if(generation===this.generation)this.bridge.wakePcm(event.data);};
+   node.port.onmessage=async event=>{
+    if(generation!==this.generation)return;
+    const {samples,...telemetry}=event.data;
+    try{await this.bridge.wakePcm(samples,telemetry);if(generation===this.generation)node.port.postMessage({type:'ack'});}
+    catch{if(generation===this.generation){this.stop();this.failure('Przerwano lokalne przetwarzanie mikrofonu. Włącz nasłuch ponownie.');}}
+   };
    const muted=ctx.createGain();muted.gain.value=0;
    ctx.createMediaStreamSource(stream).connect(node).connect(muted).connect(ctx.destination);
    await ctx.resume();

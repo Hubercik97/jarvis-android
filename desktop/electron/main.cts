@@ -2,9 +2,11 @@ import { app, BrowserWindow, ipcMain, safeStorage, dialog, shell, Tray, Menu, na
 import { readFile, writeFile, appendFile, mkdir } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
+import {cpus,totalmem} from 'node:os';
+import {publicError} from './public-error.cjs';
 import { endpointOf, repositoryOf, actionOf, apiPath } from './policy.cjs';
 import {WakeService} from './wake-service.cjs';
-import type { Settings, Configure, WakePreferences } from '../shared/types.js';
+import type { Settings, Configure, WakePreferences, CloudCheck } from '../shared/types.js';
 let window:BrowserWindow;
 let tray:Tray;
 let quitting=false;
@@ -16,6 +18,7 @@ let trustedUrl='';
 let controlBusy=false;
 let wake:WakeService;
 let wakeRequest=0;
+let cloudCheck:CloudCheck={state:'not_configured',https:false,hasToken:false,checkedAt:null};
 function wakePreferences(value:unknown):WakePreferences{
  const p=value as WakePreferences;
  if(!p||typeof p!=='object'||typeof p.enabled!=='boolean'||typeof p.autoStart!=='boolean'||typeof p.confirmation!=='boolean'||typeof p.deviceId!=='string'||p.deviceId.length>256||!Number.isFinite(p.sensitivity)||p.sensitivity<0||p.sensitivity>1)throw new Error('Nieprawidłowe ustawienia wybudzania');
@@ -30,7 +33,7 @@ async function save(){
 function trusted(event:Electron.IpcMainInvokeEvent){
  if(event.sender!==window.webContents || event.senderFrame!==window.webContents.mainFrame || event.senderFrame.url!==trustedUrl) throw new Error('Niezaufany nadawca IPC');
 }
-function handle(name:string,fn:(...args:any[])=>unknown){ipcMain.handle(name,async(event,...args)=>{trusted(event);return fn(...args);});}
+function handle(name:string,fn:(...args:any[])=>unknown){ipcMain.handle(name,async(event,...args)=>{trusted(event);try{return await fn(...args);}catch(error){throw new Error(publicError(error,[token]));}});}
 async function boot(){
  try{
   const saved=JSON.parse(await readFile(configFile(),'utf8'));
@@ -56,6 +59,19 @@ async function boot(){
  });
  session.defaultSession.setPermissionCheckHandler((contents,permission,_origin,details)=>contents===window.webContents&&permission==='media'&&details.requestingUrl===trustedUrl);
  handle('settings',()=>snapshot());
+ handle('local-control',async(enabled:unknown)=>{
+  if(typeof enabled!=='boolean')throw new Error('Nieprawidłowa zgoda na sterowanie lokalne');
+  settings={...settings,localControl:enabled};
+  try{await save();}catch{settings={...settings,localControl:false};throw new Error('Nie udało się zapisać zgody. Sterowanie lokalne zostało wyłączone.');}
+  return snapshot();
+ });
+ handle('diagnostics',()=>{const processes=app.getAppMetrics();return {wake:wake.diagnostics(),cloud:{...cloudCheck,https:settings.endpoint.startsWith('https://'),hasToken:Boolean(token)},localControl:settings.localControl,hardware:{platform:process.platform,arch:process.arch,cpu:cpus()[0]?.model||'Nieznany',logicalCpus:cpus().length,totalMemoryGiB:Number((totalmem()/1073741824).toFixed(1))},desktopWorkingSetMiB:Math.round(processes.reduce((sum,p)=>sum+p.memory.workingSetSize,0)/1024),desktopCpuPct:processes.reduce((sum,p)=>sum+p.cpu.percentCPUUsage,0)};});
+ handle('test-cloud',async()=>{
+  cloudCheck={state:'not_configured',https:settings.endpoint.startsWith('https://'),hasToken:Boolean(token),checkedAt:new Date().toISOString()};
+  if(!settings.endpoint||!token)return cloudCheck;
+  try{await cloudRequest('/health');}catch{/* cloudRequest records only a redacted diagnostic state. */}
+  return {...cloudCheck};
+ });
  handle('wake-settings',async(value:unknown)=>{const next=wakePreferences(value);const request=++wakeRequest;settings={...settings,wake:next};wake.stop();await save();if(request===wakeRequest&&next.enabled)wake.start(next.sensitivity);return next;});
  handle('wake-control',(action:unknown,error:unknown)=>{
   if(action==='stop'){wakeRequest++;if(typeof error==='string')wake.fail(error.slice(0,250));else wake.stop();}
@@ -67,20 +83,21 @@ async function boot(){
   else throw new Error('Nieprawidłowe sterowanie nasłuchem');
   return wake.status;
  });
- ipcMain.on('wake-pcm',(event,value)=>{try{trusted(event as Electron.IpcMainInvokeEvent);wake.pcm(value);}catch{/* Drop untrusted or malformed audio; never log PCM. */}});
+ handle('wake-pcm',(value,telemetry)=>wake.pcm(value,telemetry));
  handle('configure',async(input:Configure)=>{
   if(!input||typeof input!=='object') throw new Error('Nieprawidłowe ustawienia');
   const endpoint=endpointOf(input.endpoint,!app.isPackaged);
   const repository=repositoryOf(input.repository);
   if(!['system','google'].includes(input.tts)||typeof input.voice!=='string'||input.voice.length>200||!Number.isFinite(input.latitude)||!Number.isFinite(input.longitude)||Math.abs(input.latitude)>90||Math.abs(input.longitude)>180) throw new Error('Nieprawidłowe ustawienia głosu lub pogody');
-  if(input.token!==undefined && (typeof input.token!=='string'||!/^\S{16,500}$/.test(input.token))) throw new Error('Token musi mieć 16–500 znaków bez spacji');
+  if(input.token!==undefined && (typeof input.token!=='string'||! /^[\x21-\x7e]{16,500}$/.test(input.token))) throw new Error('Token musi mieć 16–500 znaków ASCII bez spacji.');
   if(endpoint!==settings.endpoint && !input.token) throw new Error('Nowy serwer wymaga ponownego wpisania tokenu');
   const nextToken=input.token||token;
   const remember=input.rememberToken===true;
   if(remember&&(!safeStorage.isEncryptionAvailable()||(process.platform==='linux'&&safeStorage.getSelectedStorageBackend()==='basic_text'))) throw new Error('Szyfrowany magazyn systemowy jest niedostępny; wyłącz zapamiętywanie tokenu');
   encryptedToken=remember&&nextToken?safeStorage.encryptString(nextToken).toString('base64'):'';
   token=nextToken;
-  settings={...settings,endpoint,repository,rememberToken:remember,startup:input.startup===true,localControl:input.localControl===true,tts:input.tts,voice:input.voice,lowPower:input.lowPower!==false,latitude:input.latitude,longitude:input.longitude};
+  settings={...settings,endpoint,repository,rememberToken:remember,startup:input.startup===true,tts:input.tts,voice:input.voice,lowPower:input.lowPower!==false,latitude:input.latitude,longitude:input.longitude};
+  cloudCheck={state:'not_configured',https:endpoint.startsWith('https://'),hasToken:Boolean(token),checkedAt:null};
   if(process.platform==='win32') app.setLoginItemSettings({openAtLogin:settings.startup,path:process.execPath,args:['--hidden']});
   await save();return snapshot();
  });
@@ -89,11 +106,16 @@ async function boot(){
   if(!settings.endpoint||!token) throw new Error('Połącz aplikację z chmurą w Ustawieniach');
   const data=body===undefined?undefined:JSON.stringify(body);
   if(data&&Buffer.byteLength(data)>(api==='/stt'?3_000_000:64_000)) throw new Error('Za duże żądanie');
-  const response=await fetch(settings.endpoint+api,{method,headers:{'x-jarvis-token':token,...(data?{'content-type':'application/json'}:{})},body:data,redirect:'error',signal:AbortSignal.timeout(api==='/health'?8_000:100_000)});
+  let response:Response;
+  try{response=await fetch(settings.endpoint+api,{method,headers:{'x-jarvis-token':token,...(data?{'content-type':'application/json'}:{})},body:data,redirect:'error',signal:AbortSignal.timeout(api==='/health'?8_000:100_000)});}
+  catch{if(api==='/health')cloudCheck={state:'network_error',https:settings.endpoint.startsWith('https://'),hasToken:Boolean(token),checkedAt:new Date().toISOString()};throw new Error('Brak połączenia z API. Sprawdź adres HTTPS, internet i certyfikat serwera.');}
   const text=await response.text();
   if(Buffer.byteLength(text)>8_000_000) throw new Error('Za duża odpowiedź serwera');
-  let result;try{result=JSON.parse(text);}catch{throw new Error('Serwer nie udostępnia API Jarvisa');}
-  if(!response.ok) throw new Error(typeof result.error==='string'?result.error:`HTTP ${response.status}`);
+  let result;try{result=JSON.parse(text);}catch{if(api==='/health')cloudCheck={...cloudCheck,state:'invalid_response',checkedAt:new Date().toISOString()};throw new Error('Serwer nie udostępnia poprawnego API Jarvisa');}
+  if(!result||typeof result!=='object'||Array.isArray(result)){if(api==='/health')cloudCheck={...cloudCheck,state:'invalid_response',checkedAt:new Date().toISOString()};throw new Error('Nieprawidłowa odpowiedź API Jarvisa');}
+  if(api==='/health')cloudCheck={state:response.status===401||response.status===403||result.auth==='invalid'?'unauthorized':!response.ok||result.auth!=='ok'?'invalid_response':result.configured?'authenticated':'provider_not_ready',https:settings.endpoint.startsWith('https://'),hasToken:Boolean(token),checkedAt:new Date().toISOString()};
+  if(!response.ok)throw new Error(response.status===401||response.status===403?'Nieprawidłowy token lub brak dostępu do API.':response.status===429?'Limit wywołań API został wykorzystany.':`Usługa chmurowa jest niedostępna (HTTP ${response.status}).`);
+  if(api==='/health')for(const name of ['provider','model'])if(typeof result[name]==='string')result[name]=publicError(new Error(result[name]),[token]);
   return result;
  }
  handle('api',cloudRequest);
@@ -105,9 +127,11 @@ async function boot(){
   try{
    const health=await cloudRequest('/health');
    if(health.auth!=='ok')throw new Error('Najpierw uwierzytelnij połączenie z chmurą');
+   if(!settings.localControl)throw new Error('Zgoda na sterowanie lokalne została cofnięta.');
    const labels={open_chrome:'Otworzyć Google Chrome?',open_documents:'Otworzyć folder Dokumenty?',open_project:`Otworzyć https://github.com/${settings.repository}?`};
    const approval=await dialog.showMessageBox(window,{type:'question',message:labels[action],detail:'Lokalny agent wykona tylko tę jedną operację.',buttons:['Anuluj','Zezwól'],defaultId:0,cancelId:0,noLink:true});
    if(approval.response!==1) return {ok:false,message:'Operacja anulowana.'};
+   if(!settings.localControl)throw new Error('Zgoda na sterowanie lokalne została cofnięta.');
    if(action==='open_project') await shell.openExternal(`https://github.com/${settings.repository}`);
    else if(action==='open_documents'){
     const error=await shell.openPath(app.getPath('documents'));if(error)throw new Error('Nie udało się otworzyć Dokumentów');

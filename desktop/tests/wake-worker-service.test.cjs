@@ -94,13 +94,31 @@ test('a stalled inference releases the microphone state with an explicit error i
  assert.equal(service.status.phase,'error');assert.ok(worker.terminated);assert.match(service.status.message,/nie odpowiada/);
 });
 
-test('sustained overload eventually stops safely instead of silently discarding every phrase',t=>{
+test('repeated IPC bursts with fast inference recover without falsely blaming the computer',t=>{
  const {worker,service}=fixture();t.after(()=>service.stop());
- for(let run=0;run<5;run++){
+ for(let run=0;run<10;run++){
   service.pcm(pcm());const frame=worker.lastFrame;
-  for(let i=0;i<4;i++)service.pcm(pcm());
-  worker.score(frame);
-  assert.equal(service.status.phase,run===4?'error':'armed');
+  for(let i=0;i<20;i++)void service.pcm(pcm());
+  worker.score(frame,.01);
+  assert.equal(service.status.phase,'armed');
  }
- assert.ok(worker.terminated);assert.match(service.status.message,/nie nadąża/);
+ assert.equal(worker.terminated,false);assert.equal(service.diagnostics().resets,10);assert.ok(service.diagnostics().discarded>0);
+});
+test('sustained measured inference debt stops safely, independently of queue bursts',async t=>{
+ const {worker,service}=fixture();t.after(()=>service.stop());
+ for(let run=0;run<13;run++){
+  const receipt=service.pcm(pcm()),frame=worker.lastFrame;
+  worker.emit('message',{type:'score',frame:frame.frame,epoch:frame.epoch,score:.01,ms:210});
+  await receipt;
+  if(service.status.phase==='error')break;
+ }
+ assert.equal(service.status.phase,'error');assert.ok(worker.terminated);assert.match(service.status.message,/bez hasła/);
+ assert.ok(service.diagnostics().meanInferenceMs>=200);
+});
+test('acknowledgement waits for inference and is released on pause/stop',async t=>{
+ const {worker,service}=fixture();t.after(()=>service.stop());let completed=false;
+ const first=service.pcm(pcm()).then(r=>{completed=true;return r;});await Promise.resolve();assert.equal(completed,false);
+ worker.score(worker.lastFrame,.01);assert.deepEqual(await first,{accepted:true,reset:false});
+ const cancelled=service.pcm(pcm());service.pause();assert.deepEqual(await cancelled,{accepted:false,reset:true});
+ service.resume();service.ready();const stopped=service.pcm(pcm());service.stop();assert.equal((await stopped).accepted,false);
 });

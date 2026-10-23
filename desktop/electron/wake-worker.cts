@@ -5,8 +5,15 @@ import * as ort from 'onnxruntime-node';
 const port=parentPort!;
 let mel:ort.InferenceSession,embedding:ort.InferenceSession,classifier:ort.InferenceSession;
 let previous=new Float32Array(480),spectrum=new Float32Array(76*32).fill(1),features=new Float32Array(24*96),frames=0;
-let busy=false,epoch=0,resetPending=false;
-function reset(){previous.fill(0);spectrum.fill(1);features.fill(0);frames=0;resetPending=false;}
+let busy=false,epoch=0,resetPending=false,quietFrames=0;
+const quietGate=workerData.quietGate!==false;
+const threadUsage=()=>{try{return typeof process.threadCpuUsage==='function'?process.threadCpuUsage():null;}catch{return null;}};
+let lastCpu=threadUsage(),lastCpuAt=performance.now(),cpuPct:number|null=null;
+function telemetry(){
+ const now=performance.now();if(now-lastCpuAt>=1000){const cpu=threadUsage();if(cpu&&lastCpu)cpuPct=100*(cpu.user+cpu.system-lastCpu.user-lastCpu.system)/((now-lastCpuAt)*1000);lastCpu=cpu;lastCpuAt=now;}
+ const memory=process.memoryUsage();return {workerThreadCpuPct:cpuPct,workerJsHeapMiB:memory.heapUsed/1048576,mainProcessRssMiB:memory.rss/1048576};
+}
+function reset(){previous.fill(0);spectrum.fill(1);features.fill(0);frames=0;resetPending=false;quietFrames=0;}
 async function load(){
  const options:ort.InferenceSession.SessionOptions={executionProviders:['cpu'],intraOpNumThreads:1,interOpNumThreads:1,graphOptimizationLevel:'all'};
  mel=await ort.InferenceSession.create(path.join(workerData.directory,'melspectrogram.onnx'),options);
@@ -26,6 +33,15 @@ port.on('message',async(message)=>{
  try{
   const start=performance.now(),chunk=new Float32Array(message.samples),frameEpoch=message.epoch;
   if(chunk.length!==1280||!chunk.every(Number.isFinite))throw new Error('Invalid PCM frame');
+  let energy=0;for(const sample of chunk)energy+=sample*sample;
+  quietFrames=Math.sqrt(energy/1280)<.0005?quietFrames+1:0;
+  // Only almost-silent input (-66 dBFS), after 2.56 s of normal processing.
+  // At this point all 24 embeddings contain silence. Preserve that quiet context
+  // and resume full inference immediately on any audible input, with no VAD model.
+  if(quietGate&&quietFrames>32&&frames>=24){
+   for(let i=0;i<480;i++)previous[i]=chunk[800+i]*32767;
+   port.postMessage({type:'score',score:0,quietSkipped:true,ms:performance.now()-start,epoch:frameEpoch,frame:message.frame,...telemetry()});return;
+  }
   const input=new Float32Array(1760);input.set(previous);for(let i=0;i<1280;i++)input[i+480]=Math.max(-1,Math.min(1,chunk[i]))*32767;
   previous=input.slice(-480);
   const m=await mel.run({input:new ort.Tensor('float32',input,[1,1760])});
@@ -40,7 +56,7 @@ port.on('message',async(message)=>{
   features.copyWithin(0,96);features.set(values,features.length-96);frames++;
   let score=0;
   if(frames>=24){const c=await classifier.run({[classifier.inputNames[0]]:new ort.Tensor('float32',features,[1,24*96])});score=Number(c[classifier.outputNames[1]].data[1]);}
-  if(frameEpoch===epoch)port.postMessage({type:'score',score,ms:performance.now()-start,epoch:frameEpoch,frame:message.frame});
+  if(frameEpoch===epoch)port.postMessage({type:'score',score,quietSkipped:false,ms:performance.now()-start,epoch:frameEpoch,frame:message.frame,...telemetry()});
  }catch{port.postMessage({type:'error',message:'Błąd lokalnego modelu wybudzania.'});}
  finally{busy=false;if(resetPending)reset();}
 });

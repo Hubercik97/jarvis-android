@@ -1,6 +1,6 @@
 {
   "name": "jarvis-desktop",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Jarvis Desktop — personal cloud assistant",
   "author": "Jarvis contributors",
   "private": true,
@@ -13,7 +13,8 @@
     "test": "tsc -p tsconfig.electron.json && node --test tests/*.test.cjs",
     "dist:win": "npm run build && electron-builder --win nsis --x64 --publish never",
     "pack:linux": "npm run build && electron-builder --linux dir --publish never",
-    "build:hologram": "vite build --config vite.hologram.config.ts && node build-hud-assets.mjs"
+    "build:hologram": "vite build --config vite.hologram.config.ts && node build-hud-assets.mjs",
+    "bench:wake": "tsc -p tsconfig.electron.json && node tests/wake-benchmark.cjs"
   },
   "build": {
     "appId": "pl.jarvis.desktop",

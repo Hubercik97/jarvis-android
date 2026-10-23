@@ -51,6 +51,12 @@ test('native offline worker recognizes both phrase spellings and rejects shipped
  const repeated=await infer(first);assert.equal(repeated.length,firstScores.length);
  repeated.forEach((s,i)=>assert.ok(Math.abs(s-firstScores[i])<1e-6,`reset must reproduce frame ${i}`));
  const silence=await infer(new Float32Array(16000*4));assert.ok(silence.every(s=>s<new WakeGate().threshold));
+ // Real standby followed by speech must resume immediately from the cheap path.
+ const resumedPcm=new Float32Array(16000*6+first.length);resumedPcm.set(first,16000*6);
+ const resumed=await infer(resumedPcm);assert.ok(resumed.every(s=>s<new WakeGate().threshold),'first fixture is a similar-word negative');
+ const positive=manifest.find(f=>f.expected);const phrase=pcmOf(await fs.readFile(path.join(directory,'fixtures',positive.file)));
+ const afterSilence=new Float32Array(16000*6+phrase.length);afterSilence.set(phrase,16000*6);const restored=await infer(afterSilence);
+ assert.ok(restored.some((s,i)=>i>0&&Math.min(s,restored[i-1])>=new WakeGate().threshold),'wake phrase must still work after extended quiet');
  // Generated non-speech background signals, never microphone recordings.
  let seed=419;const noise=new Float32Array(16000*4),tone=new Float32Array(16000*4);
  for(let i=0;i<noise.length;i++){
