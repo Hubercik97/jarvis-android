@@ -69,7 +69,7 @@ async function boot(){
  handle('test-cloud',async()=>{
   cloudCheck={state:'not_configured',https:settings.endpoint.startsWith('https://'),hasToken:Boolean(token),checkedAt:new Date().toISOString()};
   if(!settings.endpoint||!token)return cloudCheck;
-  try{await cloudRequest('/health');}catch{/* cloudRequest records only a redacted diagnostic state. */}
+  try{await cloudRequest('/health');}catch{if(cloudCheck.state==='not_configured')cloudCheck={...cloudCheck,state:'network_error'};}
   return {...cloudCheck};
  });
  handle('wake-settings',async(value:unknown)=>{const next=wakePreferences(value);const request=++wakeRequest;settings={...settings,wake:next};wake.stop();await save();if(request===wakeRequest&&next.enabled)wake.start(next.sensitivity);return next;});

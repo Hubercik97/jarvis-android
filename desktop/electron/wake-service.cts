@@ -12,6 +12,7 @@ export class WakeService{
  private worker:Worker|null=null;private gate=new WakeGate();private pending:{packet:Packet;frame:number}|null=null;
  private generation=0;private epoch=0;private nextFrame=0;private queued:Packet[]=[];private discontinuous=false;
  private slowDebt=0;private slowFrames=0;private timeout:ReturnType<typeof setTimeout>|undefined;private frameTimeout:ReturnType<typeof setTimeout>|undefined;
+ private busySince:number|null=null;
  private timings:number[]=[];private metrics={received:0,processed:0,quietSkipped:0,discarded:0,resets:0,bufferedMs:0,workerThreadCpuPct:null as number|null,workerJsHeapMiB:null as number|null,mainProcessRssMiB:null as number|null};
  private events:{time:string;code:string}[]=[];
  status:WakeStatus={phase:'off',message:'Wybudzanie wyłączone. Mikrofon nie nasłuchuje hasła.'};
@@ -27,7 +28,7 @@ export class WakeService{
   for(const p of this.queued)p.resolve(rejected());this.queued=[];this.discontinuous=false;this.gate.reset();this.worker?.postMessage({type:'reset',epoch:this.epoch});
  }
  start(sensitivity:number){
-  this.stop();this.timings=[];this.slowDebt=0;this.slowFrames=0;
+  this.stop();this.timings=[];this.slowDebt=0;this.slowFrames=0;this.busySince=null;
   this.metrics={received:0,processed:0,quietSkipped:0,discarded:0,resets:0,bufferedMs:0,workerThreadCpuPct:null,workerJsHeapMiB:null,mainProcessRssMiB:null};
   const generation=++this.generation;this.gate.sensitivity=sensitivity;this.event('start');this.emit('loading','Ładowanie lokalnego detektora „Pobudka Jarvis”…');
   try{
@@ -39,6 +40,10 @@ export class WakeService{
     if(m.type==='score'||m.type==='skipped'){
      if(!this.pending||m.epoch!==this.epoch||m.frame!==this.pending.frame)return;
      clearTimeout(this.frameTimeout);const packet=this.pending.packet;this.pending=null;
+     if(m.type==='skipped'){
+      const now=this.now();if(this.busySince===null)this.busySince=now;
+      if(now-this.busySince>3000){packet.resolve(rejected());this.fail('Lokalny detektor nie kończy obliczeń. Użyj rozmowy bez hasła i włącz nasłuch ponownie.');return;}
+     }else this.busySince=null;
      if(this.discontinuous||m.type==='skipped'){
       this.metrics.discarded++;this.metrics.resets++;this.event('audio_gap_reset');packet.resolve(rejected());this.resetPipeline();return;
      }

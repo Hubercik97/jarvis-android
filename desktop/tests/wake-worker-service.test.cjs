@@ -122,3 +122,11 @@ test('acknowledgement waits for inference and is released on pause/stop',async t
  const cancelled=service.pcm(pcm());service.pause();assert.deepEqual(await cancelled,{accepted:false,reset:true});
  service.resume();service.ready();const stopped=service.pcm(pcm());service.stop();assert.equal((await stopped).accepted,false);
 });
+test('an old inference still busy after reset cannot keep the microphone armed indefinitely',async t=>{
+ const {worker,service}=fixture();t.after(()=>service.stop());
+ for(let run=0;run<45&&service.status.phase==='armed';run++){
+  const receipt=service.pcm(pcm()),frame=worker.lastFrame;
+  worker.emit('message',{type:'skipped',frame:frame.frame,epoch:frame.epoch});await receipt;
+ }
+ assert.equal(service.status.phase,'error');assert.ok(worker.terminated);assert.match(service.status.message,/nie kończy obliczeń/);
+});
