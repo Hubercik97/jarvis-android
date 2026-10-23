@@ -74,6 +74,8 @@ jobs:
         run: node tests/wake-electron-smoke.cjs
       - name: Manual interruption and microphone recorder failure
         run: node tests/wake-interrupt-smoke.cjs
+      - name: Blocked main-loop recovery without a false wake inference timeout
+        run: node tests/wake-stall-smoke.cjs
       - name: Microphone, cloud diagnostics and explicit local-control consent
         run: node tests/diagnostics-smoke.cjs
       - name: Realtime quiet wake benchmark (runner CPU, not N4000 certification)
@@ -83,6 +85,7 @@ jobs:
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
       - name: Install EXE and test packaged application
+        id: installed
         shell: pwsh
         run: |
           $installer = Get-ChildItem release/*Setup-x64.exe | Select-Object -First 1
@@ -97,6 +100,9 @@ jobs:
           if (!$uninstaller) { throw "Uninstaller missing" }
           $removed = Start-Process -FilePath $uninstaller.FullName -ArgumentList '/S' -Wait -PassThru
           if ($removed.ExitCode -ne 0) { throw "Uninstall failed" }
+      - name: ${{ steps.installed.outputs.installed_failure || 'Installed application result recorded' }}
+        if: always()
+        run: echo 'Installer smoke result; no user credentials are used by this test.'
       - name: SHA256
         shell: pwsh
         run: |

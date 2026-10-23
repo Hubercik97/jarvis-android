@@ -1,5 +1,7 @@
 # Jarvis Desktop 0.5.1 — nasłuch, mikrofon i sterowanie
 
+Aktualizacja 0.5.2: [audyt Workera i poprawki startu detektora](WORKER_DESKTOP_CONNECTION.md). Zastępuje opisany poniżej limit 3 s limitem 8 s oraz dodaje rozgrzewanie modeli przed otwarciem mikrofonu.
+
 Poprawki zachowują holograficzny HUD, dotychczasowy głos, backend i uprawnienia. Nasłuch pozostaje lokalny. Nie zmieniono modelu polskiej frazy na angielski ani nie uruchomiono ciągłego STT w chmurze.
 
 ## Przyczyna komunikatu o przeciążeniu

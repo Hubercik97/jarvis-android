@@ -43,7 +43,16 @@ Kod repozytorium już zawiera kompatybilne endpointy. Nie należy zastępować g
 - Backend zgłasza możliwości bez zmiany istniejących formatów Androida. Nieprawidłowe metody na zarezerwowanych trasach API zwracają JSON, nie stronę SPA; autoryzacja pozostaje wymagana.
 - ONNX nadal działa lokalnie w osobnym wątku, po jednym wątku obliczeń na sesję. Trzy grafy rozgrzewają się na danych syntetycznych przed otwarciem mikrofonu. Nie zapisuje się ani nie wysyła dźwięku hasła.
 - Start ma ograniczenie 45 s, pojedyncza odpowiedź silnika 8 s zamiast 3 s. Przed uznaniem awarii aplikacja daje zaległej odpowiedzi IPC dodatkową turę obsługi. Nie usuwa to zabezpieczenia przed zawieszeniem ani wykrywania trwałego przeciążenia według budżetu 80 ms.
+- Test z prawdziwym Electronem celowo blokuje główny proces na 9 sekund, kiedy wątek ONNX kończy obliczenia. Po odblokowaniu sprawdza przetworzenie zaległej odpowiedzi, dalszy nasłuch i brak przypadkowej aktywacji. Test korzysta z syntetycznego mikrofonu i nie wywołuje chmury.
 - Raport zawiera `workerStage`, `lastFailure` i ograniczoną listę zdarzeń; kod błędu ma zamknięty format. Treść natywnego błędu, nagłówki i tokeny nie trafiają do raportu.
 - Nie ma automatycznej pętli restartowania mikrofonu po utracie uprawnień. Wyłączenie nasłuchu i rozmowa przyciskiem pozostają dostępne. Błędy chmury i lokalnego modelu są niezależne.
 
 Nie ma zdalnego dostępu do fizycznego laptopa właściciela ani jego logów. Nie potwierdzono przyczyny konkretnego zawieszenia ONNX na N4000. Po instalacji poprawki wykonaj lokalny test mikrofonu, próbę przyciskiem oraz próbę hasła w otwartym i zminimalizowanym oknie; jeżeli błąd pozostaje, raport bez sekretów wskaże etap awarii. Nie deklarujemy pomiarów CPU/RAM z fizycznego N4000 na podstawie szybszego runnera.
+
+## Walidacja zmian
+
+- 88 testów backendu, w tym format API, ochrona Androida i odczyt metadanych bez ujawniania wartości.
+- 34 testy Desktopu, w tym natywne modele polskiej frazy, ponowne uruchamianie, autoryzacja, opóźnienia i faktyczne zawieszenie detektora.
+- Build TypeScript/React i pakowanie Workera przez `--dry-run`.
+- Rzeczywiste okno Electron: diagnostyka różnych odpowiedzi API, test mikrofonu bez sieci, rozmowa przyciskiem, zapis historii, analiza PCM głosu, cykl wake/STT/AI/TTS przy minimalizacji, utrata mikrofonu, przerwanie nagrywania i 9-sekundowy zastój głównego procesu. Zewnętrzne usługi to lokalne odpowiedniki testowe.
+- Natywny build Windows i test instalacji EXE wykonuje workflow Desktop; ostateczny wynik i pliki instalatora są w jego Checks/Artifacts. Nie jest to test fizycznego Celerona ani prywatnego mikrofonu właściciela.

@@ -13,10 +13,15 @@ test('reserved API routes return method errors instead of SPA HTML while preserv
 });
 test('Cloudflare configuration audit reads only binding presence and never emits values or identifiers',async()=>{
  const result=await inspectWorkerSettings('private-cloud-token','private-account',async(url,options)=>{
-  assert.ok(url.endsWith('/workers/scripts/jarvis-android/settings'));assert.equal(options.method,'GET');
+  assert.match(url,/\/workers\/scripts\/jarvis-android\/(settings|secrets)$/);assert.equal(options.method,'GET');
+  if(url.endsWith('/secrets'))return Response.json({success:true,result:[{name:'APP_TOKEN',type:'secret_text'}]});
   return Response.json({success:true,result:{bindings:[{name:'APP_TOKEN',type:'secret_text',value:'private-app'},{name:'DB',type:'d1',id:'private-db'},{name:'OTHER',type:'plain_text',text:'private-value'}]}});
  });
  assert.equal(result.appTokenSecret,true);assert.equal(result.db,true);assert.equal(result.openaiSecret,false);assert.ok(!JSON.stringify(result).includes('private'));
+});
+test('unavailable Cloudflare secret metadata remains unknown rather than falsely missing',async()=>{
+ const result=await inspectWorkerSettings('private-token','private-account',async url=>url.endsWith('/settings')?Response.json({success:true,result:{bindings:[]}}):new Response('',{status:403}));
+ assert.equal(result.appTokenSecret,null);assert.equal(result.openaiSecret,null);
 });
 test('health advertises actual bindings without falsely declaring storage available',async()=>{
  const base={APP_TOKEN:'private-app-token',OPENAI_API_KEY:'private-provider-key'};

@@ -11,7 +11,14 @@ export async function inspectWorkerSettings(apiToken,accountId,fetcher=fetch){
   const body=await res.json();if(body.success!==true||!Array.isArray(body.result?.bindings))return {state:'invalid_response'};
   const bindings=body.result.bindings;
   const has=(name,type)=>bindings.some(b=>b.name===name&&b.type===type);
-  return {state:'inspected',appTokenSecret:has('APP_TOKEN','secret_text'),openaiSecret:has('OPENAI_API_KEY','secret_text'),anthropicSecret:has('ANTHROPIC_API_KEY','secret_text'),db:has('DB','d1'),memory:has('MEMORY','kv_namespace'),assets:has('ASSETS','assets')};
+  // Use the dedicated secret-name endpoint too: settings can omit secret bindings.
+  let secrets=null;
+  try{
+   const listed=await fetcher(`https://api.cloudflare.com/client/v4/accounts/${encodeURIComponent(accountId)}/workers/scripts/jarvis-android/secrets`,{method:'GET',headers:{authorization:`Bearer ${apiToken}`},redirect:'error',signal:AbortSignal.timeout(15000)});
+   if(listed.ok){const value=await listed.json();if(value.success===true&&Array.isArray(value.result))secrets=value.result;}
+  }catch{/* Unknown secret state must not be reported as absence. */}
+  const secret=name=>has(name,'secret_text')||secrets?.some(s=>s.name===name&&s.type==='secret_text')===true?true:secrets===null?null:false;
+  return {state:'inspected',appTokenSecret:secret('APP_TOKEN'),openaiSecret:secret('OPENAI_API_KEY'),anthropicSecret:secret('ANTHROPIC_API_KEY'),db:has('DB','d1'),memory:has('MEMORY','kv_namespace'),assets:has('ASSETS','assets')};
  }catch{return {state:'network_error'};}
 }
 export async function probeApi(origin=TARGET,token='',fetcher=fetch){
