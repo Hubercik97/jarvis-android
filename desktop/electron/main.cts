@@ -161,6 +161,14 @@ async function boot(){
 if(!app.requestSingleInstanceLock())app.quit();
 else{
  app.on('second-instance',()=>{if(window){window.show();window.focus();}});
- app.on('before-quit',()=>{quitting=true;wake?.stop();});
+ let closingNative=false;
+ app.on('before-quit',event=>{
+  quitting=true;if(!wake||closingNative)return;
+  event.preventDefault();closingNative=true;wake.stop();
+  // Release ONNX callbacks before closing their JS environment. A truly stuck
+  // native runtime cannot hold the user's explicit Quit action indefinitely.
+  const deadline=setTimeout(()=>app.exit(0),10000);
+  void wake.whenStopped().then(()=>{clearTimeout(deadline);app.quit();});
+ });
  app.whenReady().then(boot).catch(()=>{dialog.showErrorBox('Jarvis','Nie udało się uruchomić aplikacji. Sprawdź uprawnienia do katalogu ustawień.');app.quit();});
 }

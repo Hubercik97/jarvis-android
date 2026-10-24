@@ -4,7 +4,18 @@ import {WakeGate} from './wake-policy.cjs';
 type WorkerFactory=(file:string,directory:string)=>Worker;
 const defaultWorker:WorkerFactory=(file,directory)=>{
  // Pin N-API in the long-lived process; no inference or model is loaded here.
- require('onnxruntime-node');return new Worker(file,{workerData:{directory}});
+ require('onnxruntime-node');const worker=new Worker(file,{workerData:{directory}}),terminate=worker.terminate.bind(worker);
+ let shutdown:Promise<number>|null=null,exited:number|null=null;
+ worker.once('exit',code=>{exited=code;});
+ // Forcing termination in the middle of native inference can abort Electron.
+ // Stop accepting PCM immediately, release sessions in their own thread, then
+ // terminate only after the native worker acknowledges it is quiescent.
+ worker.terminate=()=>exited!==null?Promise.resolve(exited):shutdown??=new Promise(resolve=>{
+  worker.once('exit',resolve);
+  worker.on('message',message=>{if(message.type==='shutdown_ack')void terminate().then(resolve,()=>{});});
+  worker.postMessage({type:'shutdown'});
+ });
+ return worker;
 };
 type Packet={samples:Float32Array;resolve:(receipt:WakeReceipt)=>void};
 export const INFERENCE_TIMEOUT_MS=8000;
@@ -18,12 +29,14 @@ export class WakeService{
  private timings:number[]=[];private metrics={received:0,processed:0,quietSkipped:0,discarded:0,resets:0,bufferedMs:0,workerThreadCpuPct:null as number|null,workerJsHeapMiB:null as number|null,mainProcessRssMiB:null as number|null};
  private events:{time:string;code:string}[]=[];
  private workerStage='stopped';private lastFailure:string|null=null;
+ private retiring:Promise<number>|null=null;
  status:WakeStatus={phase:'off',message:'Wybudzanie wyłączone. Mikrofon nie nasłuchuje hasła.'};
  constructor(private workerFile:string,private directory:string,private publish:(s:WakeStatus)=>void,private createWorker:WorkerFactory=defaultWorker,private now:()=>number=()=>performance.now()){}
  private event(code:string){this.events.push({time:new Date().toISOString(),code});this.events=this.events.slice(-20);}
+ whenStopped(){return this.retiring??Promise.resolve(0);}
  diagnostics():WakeMetrics{
   const sorted=[...this.timings].sort((a,b)=>a-b);const mean=this.timings.reduce((s,n)=>s+n,0)/Math.max(1,this.timings.length);
-  return {engine:'ONNX CPU · Google/openWakeWord + polski MLP',frameMs:80,phase:this.status.phase,workerStage:this.workerStage,lastFailure:this.lastFailure,...this.metrics,queueDepth:this.queued.length+(this.pending?1:0),meanInferenceMs:Number(mean.toFixed(2)),p95InferenceMs:Number((sorted[Math.floor(sorted.length*.95)]||0).toFixed(2)),inferenceBudgetPct:Number((mean/80*100).toFixed(1)),events:this.events.map(e=>({...e}))};
+  return {engine:'ONNX CPU · Google/openWakeWord + polski MLP',frameMs:80,phase:this.status.phase,workerStage:this.workerStage,lastFailure:this.lastFailure,nativeShutdownPending:Boolean(this.retiring),...this.metrics,queueDepth:this.queued.length+(this.pending?1:0),meanInferenceMs:Number(mean.toFixed(2)),p95InferenceMs:Number((sorted[Math.floor(sorted.length*.95)]||0).toFixed(2)),inferenceBudgetPct:Number((mean/80*100).toFixed(1)),events:this.events.map(e=>({...e}))};
  }
  private emit(phase:WakeStatus['phase'],message:string){this.status={phase,message};this.publish(this.status);}
  private resetPipeline(){
@@ -34,6 +47,7 @@ export class WakeService{
   this.stop();this.workerStage='starting';this.lastFailure=null;this.timings=[];this.slowDebt=0;this.slowFrames=0;this.busySince=null;
   this.metrics={received:0,processed:0,quietSkipped:0,discarded:0,resets:0,bufferedMs:0,workerThreadCpuPct:null,workerJsHeapMiB:null,mainProcessRssMiB:null};
   const generation=++this.generation;this.gate.sensitivity=sensitivity;this.event('start');this.emit('loading','Ładowanie lokalnego detektora „Pobudka Jarvis”…');
+  const launch=()=>{
   try{
    const worker=this.worker=this.createWorker(this.workerFile,this.directory);
    this.timeout=setTimeout(()=>{if(generation===this.generation)this.fail('Przekroczono czas uruchamiania modelu. Sprawdź diagnostykę i użyj rozmowy bez hasła.','startup_timeout');},LOAD_TIMEOUT_MS);
@@ -68,6 +82,12 @@ export class WakeService{
    worker.on('error',()=>{if(generation===this.generation)this.fail('Lokalny detektor został zatrzymany z powodu błędu.','worker_error');});
    worker.on('exit',()=>{if(generation===this.generation)this.fail('Lokalny detektor został nieoczekiwanie zamknięty.','worker_exit');});
   }catch{this.fail('Nie udało się uruchomić detektora. Sprawdź instalację i Microsoft Visual C++ x64.','runtime_load_failed');}
+  };
+  if(this.retiring){
+   const retiring=this.retiring;this.event('waiting_for_native_shutdown');
+   this.timeout=setTimeout(()=>{if(generation===this.generation)this.fail('Poprzedni detektor nie zakończył bezpiecznie pracy. Mikrofon jest wyłączony. Uruchom ponownie Jarvisa lub użyj rozmowy bez hasła.','shutdown_timeout');},10000);
+   void retiring.then(()=>{if(this.retiring===retiring)this.retiring=null;if(generation!==this.generation)return;clearTimeout(this.timeout);launch();});
+  }else launch();
  }
  private dispatch(packet:Packet){
   if(!this.worker){packet.resolve(rejected());return;}const samples=packet.samples.slice().buffer;const frame=++this.nextFrame;this.pending={packet,frame};const epoch=this.epoch;
@@ -96,5 +116,5 @@ export class WakeService{
  ready(){if(this.status.phase==='starting'){this.event('microphone_ready');this.emit('armed','Mikrofon aktywny · lokalnie czekam na „Pobudka Jarvis”.');}}
  resume(){if(!this.worker||!['paused','detected'].includes(this.status.phase))return;this.resetPipeline();this.emit('starting','Wznawianie lokalnego mikrofonu…');}
  fail(message:string,code='capture_or_model_error'){this.lastFailure=code;this.event(code);this.stop();this.event('stopped_with_error');this.emit('error',message);}
- stop(){this.generation++;clearTimeout(this.timeout);const worker=this.worker;this.worker=null;this.workerStage='stopped';if(worker)void worker.terminate();this.resetPipeline();this.slowDebt=0;this.slowFrames=0;this.emit('off','Wybudzanie wyłączone. Mikrofon nie nasłuchuje hasła.');}
+ stop(){this.generation++;clearTimeout(this.timeout);const worker=this.worker;this.worker=null;this.workerStage='stopped';if(worker){const retired=worker.terminate();if(this.createWorker===defaultWorker){this.retiring=retired;void retired.then(()=>{if(this.retiring===retired)this.retiring=null;});}}this.resetPipeline();this.slowDebt=0;this.slowFrames=0;this.emit('off','Wybudzanie wyłączone. Mikrofon nie nasłuchuje hasła.');}
 }

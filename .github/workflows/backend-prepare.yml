@@ -1,0 +1,59 @@
+name: Jarvis — Worker API audit and deployment review (NO DEPLOY)
+on:
+  workflow_dispatch:
+  # Register this workflow from the working branch and validate definition edits.
+  # This remains read-only: every Wrangler command below uses --dry-run.
+  push:
+    paths: ['.github/workflows/backend-prepare.yml']
+permissions:
+  contents: read
+concurrency:
+  group: owner-worker-review
+  cancel-in-progress: false
+jobs:
+  prepare:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+      - run: npm ci
+      - run: npm test
+      - name: Actual workerd API, authentication, STT and D1 contract tests
+        run: npm run test:integration
+      - name: Read-only audit of the specified public Worker
+        id: audit
+        run: node tools/probe-api.mjs > .wrangler/public-api-audit.json
+        env:
+          JARVIS_PROBE_TOKEN: ${{ secrets.JARVIS_APP_TOKEN }}
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: ${{ steps.audit.outputs.summary }}
+        run: echo 'Read-only public API audit recorded.'
+      - name: Prepare the exact jarvis-android package using existing resources only
+        id: owner
+        run: node tools/prepare-owner.mjs
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          JARVIS_D1_DATABASE_ID: ${{ vars.JARVIS_D1_DATABASE_ID }}
+          JARVIS_SOURCE_APP_TOKEN: ${{ secrets.JARVIS_APP_TOKEN }}
+          JARVIS_SOURCE_OPENAI_KEY: ${{ secrets.OPENAI_API_KEY }}
+      - name: ${{ steps.owner.outputs.summary }}
+        run: echo 'Review only. No secrets, migrations, services or production deployments changed.'
+      - name: Verify prepared package WITHOUT deployment
+        run: npx wrangler deploy --config .wrangler/owner-review/wrangler.owner.json --dry-run --outdir .wrangler/owner-review/verification
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Jarvis-Cloudflare-Worker-review
+          path: |
+            backend/.wrangler/owner-review/
+            backend/.wrangler/public-api-audit.json
+          retention-days: 14
+          if-no-files-found: error
