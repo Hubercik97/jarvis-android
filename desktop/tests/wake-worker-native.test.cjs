@@ -84,3 +84,21 @@ test('native detector can stop and start again in one application process', {tim
  const {stdout}=await promisify(execFile)(process.execPath,['-e',script,path.resolve(__dirname,'../dist-electron/electron/wake-service.cjs'),directory],{timeout:25000});
  assert.match(stdout,/three native start\/stop cycles passed/);
 });
+
+test('stopping in-flight native inference drains sessions before restart without aborting the host', {timeout:30000},async()=>{
+ const {execFile}=require('node:child_process'),{promisify}=require('node:util');
+ const script=`
+ const assert=require('node:assert/strict'),path=require('node:path');
+ const {WakeService}=require(process.argv[1]);let notify=null;
+ const service=new WakeService(path.join(path.dirname(process.argv[1]),'wake-worker.cjs'),process.argv[2],s=>notify?.(s));
+ (async()=>{for(let run=0;run<5;run++){
+  const ready=new Promise((resolve,reject)=>{const timeout=setTimeout(()=>reject(new Error('native startup timeout')),10000);notify=s=>{if(s.phase==='starting'){clearTimeout(timeout);resolve();}if(s.phase==='error'){clearTimeout(timeout);reject(new Error(s.message));}};});
+  service.start(.5);await ready;service.ready();
+  const receipt=service.pcm(new Float32Array(1280));service.stop();
+  assert.equal(service.status.phase,'off','microphone state must stop immediately');
+  assert.equal((await receipt).accepted,false);await service.whenStopped();
+  assert.equal(service.diagnostics().nativeShutdownPending,false);
+ }console.log('five native in-flight stop/restart cycles passed');})().catch(e=>{console.error(e);service.stop();process.exitCode=1;});`;
+ const {stdout}=await promisify(execFile)(process.execPath,['-e',script,path.resolve(__dirname,'../dist-electron/electron/wake-service.cjs'),directory],{timeout:25000});
+ assert.match(stdout,/five native in-flight stop\/restart cycles passed/);
+});

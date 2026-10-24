@@ -14,9 +14,20 @@ const {_electron}=require('playwright'),assert=require('node:assert/strict'),fs=
   await page.evaluate(async()=>{window.__wake=[];window.jarvis.onWake(s=>window.__wake.push(s.phase));const settings=await window.jarvis.settings();await window.jarvis.wakeSettings({...settings.wake,enabled:true,confirmation:false});});
   await waitForDiagnostics(d=>d.wake.processed>=5);
   const before=await page.evaluate(()=>window.jarvis.diagnostics());
-  // Wait for a PCM packet to be in flight, then block only Electron's main loop.
-  await waitForDiagnostics(d=>d.wake.queueDepth>0,10000,10);
-  await app.evaluate(()=>{const until=Date.now()+9000;while(Date.now()<until){/* simulated CPU stall */}});
+  // Block immediately AFTER the next real PCM packet is dispatched. Polling a
+  // ~2 ms inference window is unreliable with Windows timer granularity.
+  await app.evaluate(()=>new Promise((resolve,reject)=>{
+   const {Worker}=process.getBuiltinModule('worker_threads'),original=Worker.prototype.postMessage;
+   const timeout=setTimeout(()=>{Worker.prototype.postMessage=original;reject(new Error('No PCM dispatch to stall'));},15000);
+   Worker.prototype.postMessage=function(message,...args){
+    const result=original.call(this,message,...args);
+    if(message?.type==='pcm'){
+     Worker.prototype.postMessage=original;clearTimeout(timeout);
+     const until=Date.now()+9000;while(Date.now()<until){/* simulated CPU stall */}resolve();
+    }
+    return result;
+   };
+  }));
   await waitForDiagnostics(d=>d.wake.processed>before.wake.processed||d.wake.phase==='error',15000);
   const after=await page.evaluate(()=>window.jarvis.diagnostics());
   assert.equal(after.wake.phase,'armed',JSON.stringify(after.wake));assert.equal(after.wake.lastFailure,null);
@@ -24,4 +35,4 @@ const {_electron}=require('playwright'),assert=require('node:assert/strict'),fs=
   await page.evaluate(()=>window.jarvis.wakeControl('stop'));assert.equal((await page.evaluate(()=>window.jarvis.diagnostics())).wake.phase,'off');
   console.log('PASS: nine-second main-loop stall drains queued worker response without a false inference timeout; native processing recovers, no activation or cloud calls');
  }finally{if(app)await app.close();await fs.rm(profile,{recursive:true,force:true,maxRetries:5,retryDelay:200});}
-})().catch(e=>{console.error(e);process.exitCode=1;});
+})().catch(async e=>{if(process.env.GITHUB_OUTPUT)await fs.appendFile(process.env.GITHUB_OUTPUT,'stall_failure=Wake stall: '+String(e.message).replace(/[\r\n]/g,' ').slice(0,1200)+'\n');console.error(e);process.exitCode=1;});

@@ -57,3 +57,11 @@ Nowy test Electron przechodzi cały cykl po syntetycznej polskiej frazie: lokaln
 Jedynie zewnętrzne płatne usługi są przechwytywane przez lokalną funkcję testową; nie zastępujemy tras API ani bazy odpowiedziami testowego serwera HTTP. Test sprawdza integrację, lecz nie dowodzi poprawności prywatnego klucza modelu ani mikrofonu fizycznego N4000. To sprawdzenie pozostaje do wykonania po zatwierdzonym skonfigurowaniu chmury.
 
 Interfejs graficzny, kod Androida i istniejące prace Centrum Integracji pozostają bez zmian.
+
+## Uzupełnienie Desktop 0.5.3 TEST — bezpieczne zatrzymanie ONNX
+
+Rozszerzony test przeciążenia ujawnił możliwość zakończenia procesu Electron przez natywny wyjątek `Napi::Error` przy bezwarunkowym `Worker.terminate()` w czasie obliczeń. Detektor przestaje przyjmować PCM i wyłącza stan mikrofonu od razu; następnie kończy bieżącą inferencję, zwalnia sesje w swoim wątku i potwierdza gotowość do zamknięcia. Dopiero wtedy następuje zakończenie wątku. Ponowne uruchomienie czeka na zamknięcie poprzedniego silnika.
+
+Jeżeli natywny silnik rzeczywiście się zawiesi, po 10 s oczekiwania aplikacja nie tworzy kolejnych jego kopii i podpowiada restart lub rozmowę bez hasła. Pole `nativeShutdownPending` w raporcie odróżnia wyłączony mikrofon od kończenia pracy wątku. Polecenie zakończenia aplikacji czeka na bezpieczne zamknięcie silnika; limit 10 s zapobiega nieograniczonemu blokowaniu jawnego wyjścia użytkownika.
+
+Test natywny uruchamia pięć cykli stop/restart z ramką w trakcie przetwarzania. Test przeciążenia blokuje główny proces bezpośrednio po wysłaniu prawdziwej ramki, zamiast próbować trafić odpytywaniem w kilkumilisekundowe okno obliczeń — ta wcześniejsza metoda bywała niestabilna przy rozdzielczości zegara Windows. Nie zmieniono modelu frazy, zasad autoryzacji ani wyglądu HUD.

@@ -80,7 +80,11 @@ jobs:
       - name: Manual interruption and microphone recorder failure
         run: node tests/wake-interrupt-smoke.cjs
       - name: Blocked main-loop recovery without a false wake inference timeout
+        id: stall
         run: node tests/wake-stall-smoke.cjs
+      - name: ${{ steps.stall.outputs.stall_failure || 'Wake stall test result recorded' }}
+        if: always()
+        run: echo 'Diagnostic for the local test profile without credentials.'
       - name: Microphone, cloud diagnostics and explicit local-control consent
         run: node tests/diagnostics-smoke.cjs
       - name: Realtime quiet wake benchmark (runner CPU, not N4000 certification)

@@ -7,6 +7,12 @@ let mel:ort.InferenceSession,embedding:ort.InferenceSession,classifier:ort.Infer
 let previous=new Float32Array(480),spectrum=new Float32Array(76*32).fill(1),features=new Float32Array(24*96),frames=0;
 let busy=false,epoch=0,resetPending=false,quietFrames=0;
 let stage='initializing';
+let loading=true,shuttingDown=false,disposing=false;
+async function shutdown(){
+ if(disposing)return;disposing=true;
+ try{for(const session of [classifier,embedding,mel])if(session)await session.release();}
+ finally{port.postMessage({type:'shutdown_ack'});port.close();}
+}
 const quietGate=workerData.quietGate!==false;
 const threadUsage=()=>{try{return typeof process.threadCpuUsage==='function'?process.threadCpuUsage():null;}catch{return null;}};
 let lastCpu=threadUsage(),lastCpuAt=performance.now(),cpuPct:number|null=null;
@@ -36,6 +42,8 @@ async function load(){
  port.postMessage({type:'ready'});
 }
 port.on('message',async(message)=>{
+ if(message.type==='shutdown'){shuttingDown=true;if(!loading&&!busy)void shutdown();return;}
+ if(shuttingDown)return;
  if(message.type==='reset'){
   epoch=message.epoch;resetPending=true;
   // An ONNX run may still read the backing arrays. Never mutate them mid-run.
@@ -72,6 +80,6 @@ port.on('message',async(message)=>{
   if(frames>=24){stage='classifier';const c=await classifier.run({[classifier.inputNames[0]]:new ort.Tensor('float32',features,[1,24*96])});score=Number(c[classifier.outputNames[1]].data[1]);}
   if(frameEpoch===epoch)port.postMessage({type:'score',score,quietSkipped:false,ms:performance.now()-start,epoch:frameEpoch,frame:message.frame,...telemetry()});
  }catch{port.postMessage({type:'error',code:`inference_${stage}_failed`,message:'Błąd lokalnego modelu wybudzania.'});}
- finally{busy=false;if(resetPending)reset();}
+ finally{busy=false;if(shuttingDown)void shutdown();else if(resetPending)reset();}
 });
-void load().catch(()=>port.postMessage({type:'error',code:`startup_${stage}_failed`,message:'Nie można wczytać lokalnego modelu wybudzania. Napraw instalację Jarvisa.'}));
+void load().catch(()=>port.postMessage({type:'error',code:`startup_${stage}_failed`,message:'Nie można wczytać lokalnego modelu wybudzania. Napraw instalację Jarvisa.'})).finally(()=>{loading=false;if(shuttingDown)void shutdown();});
