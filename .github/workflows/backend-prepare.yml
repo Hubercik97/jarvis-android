@@ -1,6 +1,10 @@
 name: Jarvis — Worker API audit and deployment review (NO DEPLOY)
 on:
   workflow_dispatch:
+  # Register this workflow from the working branch and validate definition edits.
+  # This remains read-only: every Wrangler command below uses --dry-run.
+  push:
+    paths: ['.github/workflows/backend-prepare.yml']
 permissions:
   contents: read
 concurrency:

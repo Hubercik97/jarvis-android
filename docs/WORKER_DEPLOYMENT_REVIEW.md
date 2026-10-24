@@ -22,7 +22,7 @@ Wszystkie operacje na danych wymagają `x-jarvis-token` równego **APP_TOKEN teg
 
 ## Nowy pakiet do przeglądu
 
-Ręczny workflow **Jarvis — Worker API audit and deployment review (NO DEPLOY)**:
+Workflow **Jarvis — Worker API audit and deployment review (NO DEPLOY)** uruchamia się ręcznie lub po zmianie jego definicji w repozytorium:
 
 1. Uruchamia testy backendu i lokalnego, rzeczywistego runtime workerd.
 2. Ponownie odczytuje publiczne endpointy i metadane Cloudflare wyłącznie przez GET. Nie wykonuje prawdziwego płatnego AI/STT/TTS.
